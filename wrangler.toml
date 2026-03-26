@@ -1,0 +1,13 @@
+name = "literature-platform"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "literature-db"
+database_id = "3c4f361c-1d1e-4025-8fde-ad171cc7d568"
+
+[[kv_namespaces]]
+binding = "CACHE_KV"
+id = "local-kv-id"
