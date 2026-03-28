@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { ProtectedRoute } from "./contexts/AuthContext";
 
 // Layouts
 import StudentLayout from "./components/layout/StudentLayout";
@@ -49,7 +50,11 @@ export default function App() {
         <Route path="/exam-room" element={<ExamRoomPage />} />
 
         {/* Student Dashboard */}
-        <Route path="/student" element={<StudentLayout />}>
+        <Route path="/student" element={
+          <ProtectedRoute allowedRole="student">
+            <StudentLayout />
+          </ProtectedRoute>
+        }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<StudentDashboard />} />
           <Route path="exam-room" element={<StudentExamRoom />} />
@@ -61,7 +66,11 @@ export default function App() {
         </Route>
 
         {/* Teacher Dashboard */}
-        <Route path="/teacher" element={<TeacherLayout />}>
+        <Route path="/teacher" element={
+          <ProtectedRoute allowedRole="teacher">
+            <TeacherLayout />
+          </ProtectedRoute>
+        }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="library" element={<Library />} />

@@ -1,5 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 
 const NAV_ITEMS = [
   { name: "Tổng quan", href: "/teacher/dashboard", icon: "dashboard" },
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
 
 export function TeacherSidebar() {
   const { pathname } = useLocation();
+  const { user, logout } = useAuth();
 
   return (
     <aside className="bg-[#1B4F72] dark:bg-[#002842] h-screen w-72 fixed left-0 top-0 overflow-y-auto z-40 flex flex-col py-8 justify-between shadow-2xl shadow-blue-900/20">
@@ -44,17 +46,22 @@ export function TeacherSidebar() {
       </div>
       <div className="px-6 space-y-4">
         <div className="flex items-center gap-3 px-2 py-3">
-          <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-sm font-bold text-white">L</div>
+          <div className="w-10 h-10 rounded-full bg-white/15 flex items-center justify-center text-sm font-bold text-white">
+            {user?.name?.[0]?.toUpperCase() || 'T'}
+          </div>
           <div>
-            <p className="text-sm font-bold text-white font-serif leading-tight">Cô Lan</p>
+            <p className="text-sm font-bold text-white font-serif leading-tight">{user?.name || 'Giáo viên'}</p>
             <p className="text-[10px] text-blue-100/60 uppercase tracking-widest">Giáo viên Ngữ Văn</p>
           </div>
         </div>
         <div className="pt-4 border-t border-white/10 space-y-1">
-          <Link className="flex items-center gap-3 px-4 py-2 text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-all" to="/login">
+          <button 
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-2 text-blue-100/60 hover:text-white hover:bg-white/5 rounded-lg transition-all"
+          >
             <span className="material-symbols-outlined text-sm">logout</span>
             <span className="text-[10px] tracking-[0.2em] uppercase">Đăng xuất</span>
-          </Link>
+          </button>
         </div>
       </div>
     </aside>

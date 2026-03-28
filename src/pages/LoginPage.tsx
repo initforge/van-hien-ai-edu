@@ -1,24 +1,38 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState<string | false>(false);
+  const [email, setEmail] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleLogin = async (role: "teacher" | "student") => {
+    if (!email.trim()) {
+      setErrorMsg("Vui lòng nhập Email học giả.");
+      return;
+    }
+    
     setIsLoading(role);
+    setErrorMsg("");
+    
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ role, email: email.trim() }),
       });
-      const data = await res.json() as { redirect?: string };
+      const data = await res.json() as { redirect?: string, error?: string };
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Đăng nhập thất bại");
+      }
+      
       if (data.redirect) {
         navigate(data.redirect);
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      setErrorMsg(e.message || "Lỗi kết nối đến máy chủ.");
       setIsLoading(false);
     }
   };
@@ -105,13 +119,27 @@ export default function LoginPage() {
 
             {/* Login Form */}
             <div className="flex-grow space-y-6">
+              
+              {errorMsg && (
+                <div className="bg-error/10 text-error p-3 rounded-xl text-sm font-semibold border border-error/20 flex items-center gap-2" style={{ animation: "fadeIn 0.3s ease-out both" }}>
+                  <span className="material-symbols-outlined text-sm">error</span>
+                  {errorMsg}
+                </div>
+              )}
+
               <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
                 <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Email học giả</label>
-                <input className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white" placeholder="scholar@vanhoc.ai" type="email" />
+                <input 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white" 
+                  placeholder="an@vanhocai.edu.vn" 
+                  type="email" 
+                />
               </div>
               <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
                 <div className="flex justify-between items-end">
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu</label>
+                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu (Không bắt buộc với MVP)</label>
                   <span className="text-[11px] font-label font-semibold text-tertiary hover:underline cursor-pointer transition-all">Quên mật khẩu?</span>
                 </div>
                 <input className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white" placeholder="••••••••" type="password" />

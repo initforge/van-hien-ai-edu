@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
@@ -101,7 +101,7 @@ export default function GradingPage() {
           {selectedStudent && (
             <>
               <span className="text-slate-300">/</span>
-              <span className="text-slate-600 font-medium">{student?.name}</span>
+              <span className="text-slate-600 font-medium">{student?.name || student?.studentId}</span>
             </>
           )}
         </div>
@@ -218,9 +218,9 @@ export default function GradingPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center font-headline text-primary font-bold text-sm">
-                          {s.name.split(' ').pop()?.charAt(0)}
+                          {(s.name || s.studentId || '?').split(' ').pop()?.charAt(0).toUpperCase()}
                         </div>
-                        <span className="font-semibold text-primary">{s.name}</span>
+                        <span className="font-semibold text-primary">{s.name || s.studentId || 'Chưa rõ'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -237,7 +237,7 @@ export default function GradingPage() {
                         {s.status === "returned" ? "Đã trả" : s.status === "ai_graded" ? "AI đã chấm" : "Chờ chấm"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-center font-bold text-primary text-lg">{s.score ?? "—"}</td>
+                    <td className="px-6 py-4 text-center font-bold text-primary text-lg">{s.teacherScore || s.aiScore || "—"}</td>
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={(e) => { e.stopPropagation(); setSelectedStudent(s.id); setStep("grading"); }}

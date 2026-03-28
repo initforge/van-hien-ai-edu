@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import useSWR from 'swr';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
@@ -7,9 +7,27 @@ export default function LibraryPage() {
   const [selected, setSelected] = useState<number>(1);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: WORKS = [], isLoading } = useSWR('/api/works', fetcher);
+  const { data: WORKS = [], isLoading, mutate } = useSWR('/api/works', fetcher);
 
   const work = WORKS?.find(w => w.id === selected);
+
+  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    await fetch('/api/works', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: formData.get('title'),
+        author: formData.get('author'),
+        grade: formData.get('grade'),
+        genre: formData.get('genre'),
+        content: formData.get('content')
+      })
+    });
+    await mutate();
+    setShowForm(false);
+  };
 
   return (
     <div className="flex gap-8 items-start relative h-full page-enter">
@@ -33,18 +51,18 @@ export default function LibraryPage() {
         {showForm && (
           <div className="mb-8 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
             <h3 className="font-headline text-xl font-bold text-primary mb-6">Thêm tác phẩm mới</h3>
-            <form className="grid grid-cols-2 gap-6" onSubmit={(e) => { e.preventDefault(); setShowForm(false); }}>
+            <form className="grid grid-cols-2 gap-6" onSubmit={handleCreate}>
               <div className="space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên tác phẩm *</label>
-                <input className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="VD: Chí Phèo" type="text" />
+                <input name="title" required className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="VD: Chí Phèo" type="text" />
               </div>
               <div className="space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác giả *</label>
-                <input className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="VD: Nam Cao" type="text" />
+                <input name="author" required className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="VD: Nam Cao" type="text" />
               </div>
               <div className="space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Lớp học</label>
-                <select className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
+                <select name="grade" className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
                   <option>Lớp 8</option>
                   <option>Lớp 9</option>
                   <option>Lớp 10</option>
@@ -54,7 +72,7 @@ export default function LibraryPage() {
               </div>
               <div className="space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Thể loại</label>
-                <select className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
+                <select name="genre" className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
                   <option>Truyện ngắn</option>
                   <option>Tiểu thuyết</option>
                   <option>Truyện thơ</option>
@@ -65,7 +83,7 @@ export default function LibraryPage() {
               </div>
               <div className="col-span-2 space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Nội dung / đoạn trích chính</label>
-                <textarea className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="Dán nội dung tác phẩm hoặc đoạn trích vào đây để AI phân tích..." rows={5}></textarea>
+                <textarea name="content" className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="Dán nội dung tác phẩm hoặc đoạn trích vào đây để AI phân tích..." rows={5}></textarea>
               </div>
               <div className="col-span-2 flex justify-end gap-4">
                 <button type="button" onClick={() => setShowForm(false)} className="px-6 py-3 text-slate-500 font-bold hover:text-primary transition-colors">Hủy</button>
