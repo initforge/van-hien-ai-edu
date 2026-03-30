@@ -17,7 +17,7 @@ export function AdminSidebar() {
     <aside className="bg-[#0D1B2A] h-screen w-72 fixed left-0 top-0 overflow-y-auto z-40 flex flex-col py-8 justify-between shadow-2xl shadow-black/30">
       <div>
         <div className="px-8 mb-10">
-          <h1 className="text-2xl font-bold tracking-tight text-white font-serif">Văn Học AI</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white font-headline">Văn Học AI</h1>
           <p className="text-blue-100/40 text-xs tracking-widest uppercase mt-1">Quản trị Hệ thống</p>
         </div>
         <nav className="space-y-1">
@@ -48,7 +48,7 @@ export function AdminSidebar() {
             {user?.name?.[0]?.toUpperCase() || 'A'}
           </div>
           <div>
-            <p className="text-sm font-bold text-white font-serif leading-tight">{user?.name || 'Admin'}</p>
+            <p className="text-sm font-bold text-white font-headline leading-tight">{user?.name || 'Admin'}</p>
             <p className="text-[10px] text-blue-100/40 uppercase tracking-widest">Quản trị viên</p>
           </div>
         </div>

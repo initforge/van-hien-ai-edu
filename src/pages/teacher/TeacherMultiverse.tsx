@@ -6,16 +6,24 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function TeacherMultiversePage() {
   const { data: rawStorylines, mutate, isLoading } = useSWR('/api/storylines', fetcher);
+  const { data: rawCharacters } = useSWR('/api/characters', fetcher);
   const storylines = rawStorylines as any[];
-  const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState({ workId: 'work-1', branchPoint: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const characters = (rawCharacters || []) as any[];
 
-  const fallbackWorks = [
-    { id: 'work-1', title: 'Truyện Kiều - Nguyễn Du' },
-    { id: 'work-2', title: 'Lão Hạc - Nam Cao' },
-    { id: 'work-3', title: 'Vợ Nhặt - Kim Lân' }
-  ];
+  // Derive unique works from characters
+  const works = React.useMemo(() => {
+    const map = new Map<string, { id: string; title: string }>();
+    for (const c of characters) {
+      if (c.workId && !map.has(c.workId)) {
+        map.set(c.workId, { id: c.workId, title: c.workTitle || c.workId });
+      }
+    }
+    return Array.from(map.values());
+  }, [characters]);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({ workId: works[0]?.id || '', branchPoint: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +36,7 @@ export default function TeacherMultiversePage() {
       });
       mutate();
       setIsCreating(false);
-      setFormData({ workId: 'work-1', branchPoint: '' });
+      setFormData({ workId: works[0]?.id || '', branchPoint: '' });
     } catch (err) {
       console.error(err);
     } finally {
@@ -45,7 +53,7 @@ export default function TeacherMultiversePage() {
         </div>
         <button 
           onClick={() => setIsCreating(true)}
-          className="bg-primary text-white px-6 py-3 rounded-full font-serif font-bold hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all flex items-center gap-2"
+          className="bg-primary text-white px-6 py-3 rounded-full font-headline font-bold hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-sm">add</span> Tạo nhánh mới
         </button>
@@ -61,7 +69,7 @@ export default function TeacherMultiversePage() {
             ) : storylines?.length === 0 ? (
                <div className="p-12 text-center text-outline bg-surface-container-lowest border border-dashed border-outline-variant/50 rounded-3xl w-full col-span-2">
                  <span className="material-symbols-outlined text-4xl mb-3 opacity-50">auto_awesome_mosaic</span>
-                 <p className="font-serif">Chưa có nhánh cốt truyện nào được khởi tạo.</p>
+                 <p className="font-headline">Chưa có nhánh cốt truyện nào được khởi tạo.</p>
                </div>
             ) : (
               storylines?.map((story: any, i: number) => (
@@ -72,7 +80,7 @@ export default function TeacherMultiversePage() {
                    <div className="relative z-10">
                      <div className="flex justify-between items-start mb-4">
                        <span className="bg-primary/5 text-primary text-[10px] font-bold px-3 py-1 rounded-full border border-primary/10 uppercase tracking-widest">
-                         {story.workTitle || fallbackWorks.find(w => w.id === story.workId)?.title || 'Tác phẩm'}
+                         {story.workTitle || 'Tác phẩm'}
                        </span>
                        <span className="text-[10px] text-outline font-medium">Hôm nay</span>
                      </div>
@@ -115,9 +123,12 @@ export default function TeacherMultiversePage() {
                      onChange={(e) => setFormData({...formData, workId: e.target.value})}
                      className="w-full bg-surface-container-low/50 border border-outline-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20 px-4 py-3 text-sm transition-all outline-none rounded-xl"
                    >
-                     {fallbackWorks.map(w => (
+                     {works.map(w => (
                        <option key={w.id} value={w.id}>{w.title}</option>
                      ))}
+                     {!works.length && (
+                       <option value="work-1">Truyện Kiều — Nguyễn Du</option>
+                     )}
                    </select>
                  </div>
                  

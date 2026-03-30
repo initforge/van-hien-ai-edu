@@ -8,7 +8,7 @@ export default function Homepage() {
       {/* TopNavBar */}
       <nav className="fixed top-0 w-full z-50 bg-[#f9f9f6]/80 backdrop-blur-md dark:bg-slate-900/80 shadow-sm dark:shadow-none">
         <div className="flex justify-between items-center w-full px-8 py-5 max-w-7xl mx-auto">
-          <div className="text-2xl font-serif font-bold text-[#003857] dark:text-blue-100">
+          <div className="text-2xl font-headline font-bold text-[#003857] dark:text-blue-100">
             Văn Học AI
           </div>
           <div className="flex items-center gap-4">
@@ -221,7 +221,7 @@ export default function Homepage() {
       <footer className="w-full py-16 px-8 relative overflow-hidden bg-[#f9f9f6] dark:bg-slate-950 before:content-[''] before:absolute before:top-0 before:left-0 before:w-full before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-[#326286]/20 before:to-transparent">
         <div className="flex flex-col md:flex-row justify-center items-center gap-8 max-w-7xl mx-auto relative z-10">
           <div className="flex flex-col items-center">
-            <div className="text-xl font-serif italic text-[#003857] dark:text-blue-200 mb-2">Văn Học AI</div>
+            <div className="text-xl font-headline italic text-[#003857] dark:text-blue-200 mb-2">Văn Học AI</div>
             <p className="font-sans text-sm tracking-tight text-slate-500 dark:text-slate-400 text-center">
               © 2026 Văn Học AI. Kiến tạo tương lai văn học Việt qua nét bút AI.
             </p>

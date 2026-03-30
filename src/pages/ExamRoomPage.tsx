@@ -8,9 +8,9 @@ export default function ExamRoomPage() {
         <div className="flex justify-between items-center w-full px-8 py-4 max-w-full mx-auto">
           {/* Left: Brand & Exam Title */}
           <div className="flex items-center gap-6">
-            <span className="text-xl font-bold tracking-tight text-primary font-serif">Văn Học AI</span>
+            <span className="text-xl font-bold tracking-tight text-primary font-headline">Văn Học AI</span>
             <div className="h-4 w-px bg-outline-variant/30"></div>
-            <h1 className="text-primary font-bold border-b-2 border-primary font-serif">Đề thi giữa kỳ — Lớp 8</h1>
+            <h1 className="text-primary font-bold border-b-2 border-primary font-headline">Đề thi giữa kỳ — Lớp 8</h1>
           </div>
           
           {/* Center: Timer */}
@@ -25,7 +25,7 @@ export default function ExamRoomPage() {
               <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
               <span>Đã tự động lưu</span>
             </div>
-            <button className="bg-tertiary hover:bg-[#8a1b13] text-white px-6 py-2.5 rounded-lg font-bold font-serif transition-colors shadow-lg shadow-tertiary/20 active:scale-95">
+            <button className="bg-tertiary hover:bg-[#8a1b13] text-white px-6 py-2.5 rounded-lg font-bold font-headline transition-colors shadow-lg shadow-tertiary/20 active:scale-95">
               Nộp bài
             </button>
           </div>
@@ -40,11 +40,11 @@ export default function ExamRoomPage() {
           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-10 overflow-y-auto max-h-[819px] sticky top-28 border-[0.5px] border-outline-variant/30 shadow-[0_4px_20px_-5px_rgba(26,28,27,0.06)]">
             <div className="mb-8 relative z-10">
               <span className="text-[10px] font-bold tracking-[0.2em] text-primary/70 uppercase block mb-2">Phần I: Đọc hiểu (3.0 điểm)</span>
-              <h2 className="font-serif text-3xl font-bold text-primary leading-tight">Lão Hạc</h2>
+              <h2 className="font-headline text-3xl font-bold text-primary leading-tight">Lão Hạc</h2>
               <p className="text-sm text-on-surface-variant/80 italic mt-1 font-medium">— Nam Cao</p>
             </div>
             
-            <article className="font-serif text-lg leading-[1.8] text-on-surface space-y-6 relative z-10">
+            <article className="font-headline text-lg leading-[1.8] text-on-surface space-y-6 relative z-10">
               <p>Mặt lão đột nhiên co rúm lại. Những vết nhăn xô lại với nhau, ép cho nước mắt chảy ra. Cái đầu lão ngoẹo về một bên và cái miệng móm mém của lão mếu như con nít. Lão hu hu khóc...</p>
               <p>— Khốn nạn... Ông giáo ơi! Nó có biết gì đâu! Nó kiến tôi đi gọi về thì nó vẫy đuôi mừng. Tôi cho nó ăn cơm xong thì thằng Mục, thằng Xiên, hai thằng chúng nó nấp sẵn ở trong nhà, chỉ việc xông ra mà tóm lấy nó. Nó đang ăn thì thằng Mục tóm được hai cẳng sau của nó dốc ngược nó lên...</p>
               <p>Này! Ông giáo ạ! Cái giống nó cũng khôn! Nó cứ làm in như nó trách tôi; nó bảo tôi rằng: "A! Lão già tệ lắm! Tôi ăn ở với lão như thế mà lão xử với tôi như thế này à?".</p>
@@ -63,20 +63,20 @@ export default function ExamRoomPage() {
             <div className="space-y-8">
               <div className="group">
                 <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 1 (0.5 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Phương thức biểu đạt chính được sử dụng trong đoạn trích trên là gì?</p>
-                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-serif text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
+                <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Phương thức biểu đạt chính được sử dụng trong đoạn trích trên là gì?</p>
+                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
               </div>
               
               <div className="group">
                 <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 2 (0.5 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Tìm những từ ngữ miêu tả ngoại hình và cử chỉ của Lão Hạc khi kể chuyện bán chó.</p>
-                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-serif text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
+                <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Tìm những từ ngữ miêu tả ngoại hình và cử chỉ của Lão Hạc khi kể chuyện bán chó.</p>
+                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
               </div>
               
               <div className="group">
                 <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 3 (2.0 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Vì sao Lão Hạc lại cảm thấy mình "nỡ tâm lừa" một con chó? Phân tích diễn biến tâm lý của nhân vật.</p>
-                <textarea className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-serif text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400" placeholder="Viết phân tích của bạn ở đây..." rows={6}></textarea>
+                <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Vì sao Lão Hạc lại cảm thấy mình "nỡ tâm lừa" một con chó? Phân tích diễn biến tâm lý của nhân vật.</p>
+                <textarea className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-headline text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400" placeholder="Viết phân tích của bạn ở đây..." rows={6}></textarea>
               </div>
             </div>
           </div>
@@ -92,10 +92,10 @@ export default function ExamRoomPage() {
           {/* Essay Question 1 */}
           <div className="space-y-6">
             <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-serif text-2xl font-bold text-primary">Câu 1 (2.0 điểm): Nghị luận xã hội</h3>
+              <h3 className="font-headline text-2xl font-bold text-primary">Câu 1 (2.0 điểm): Nghị luận xã hội</h3>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: 200 - 300</span>
             </div>
-            <p className="font-serif text-xl text-on-surface leading-relaxed italic font-medium">
+            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
               Viết một đoạn văn ngắn bàn về ý nghĩa của lòng dũng cảm trong cuộc sống hiện đại.
             </p>
             <div className="relative group mt-4">
@@ -108,7 +108,7 @@ export default function ExamRoomPage() {
                   <div className="w-px h-6 bg-outline-variant/20"></div>
                   <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_quote</span>
                 </div>
-                <textarea className="w-full h-full min-h-[250px] border-0 focus:ring-0 font-serif text-lg leading-[2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Bắt đầu viết bài luận của bạn..."></textarea>
+                <textarea className="w-full h-full min-h-[250px] border-0 focus:ring-0 font-headline text-lg leading-[2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Bắt đầu viết bài luận của bạn..."></textarea>
               </div>
             </div>
           </div>
@@ -116,10 +116,10 @@ export default function ExamRoomPage() {
           {/* Essay Question 2 */}
           <div className="space-y-6">
             <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-serif text-2xl font-bold text-primary">Câu 2 (5.0 điểm): Nghị luận văn học</h3>
+              <h3 className="font-headline text-2xl font-bold text-primary">Câu 2 (5.0 điểm): Nghị luận văn học</h3>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: &gt; 600</span>
             </div>
-            <p className="font-serif text-xl text-on-surface leading-relaxed italic font-medium">
+            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
               Phân tích giá trị nhân đạo của tác phẩm "Lão Hạc" qua nhân vật cùng tên.
             </p>
             <div className="relative group mt-4">
@@ -139,7 +139,7 @@ export default function ExamRoomPage() {
                     Chế độ tập trung
                   </div>
                 </div>
-                <textarea className="w-full h-full min-h-[600px] border-0 focus:ring-0 font-serif text-lg leading-[2.2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Phân tích sâu về nhân vật Lão Hạc..."></textarea>
+                <textarea className="w-full h-full min-h-[600px] border-0 focus:ring-0 font-headline text-lg leading-[2.2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Phân tích sâu về nhân vật Lão Hạc..."></textarea>
                 
                 {/* Floating Word Count */}
                 <div className="absolute bottom-6 right-6 flex justify-end">

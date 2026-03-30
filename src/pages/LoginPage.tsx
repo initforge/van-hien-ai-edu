@@ -53,10 +53,10 @@ export default function LoginPage() {
       <header className="fixed top-0 w-full z-50 bg-[#f9f9f6]/80 backdrop-blur-xl border-b border-[#326286]/10 shadow-[0_12px_40px_-10px_rgba(26,28,27,0.06)]">
         <div className="flex justify-between items-center h-20 px-8 max-w-[1440px] mx-auto">
           <Link to="/" className="group">
-            <div className="text-2xl font-serif font-bold text-[#003857] tracking-tight group-hover:text-secondary transition-colors duration-300">Văn Học AI</div>
+            <div className="text-2xl font-headline font-bold text-[#003857] tracking-tight group-hover:text-secondary transition-colors duration-300">Văn Học AI</div>
           </Link>
           <Link to="/">
-            <button className="bg-primary-container text-white px-6 py-2.5 rounded-full font-serif text-sm hover:opacity-90 hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-300">
+            <button className="bg-primary-container text-white px-6 py-2.5 rounded-full font-headline text-sm hover:opacity-90 hover:shadow-lg hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-300">
               Trang chủ
             </button>
           </Link>
@@ -128,38 +128,42 @@ export default function LoginPage() {
               )}
 
               <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
-                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Email học giả</label>
-                <input 
+                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Email hoặc Username</label>
+                <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white" 
-                  placeholder="an@vanhocai.edu.vn" 
-                  type="email" 
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleLogin('teacher'); }}
+                  className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                  placeholder="an@vanhocai.edu.vn hoặc xuanlinh"
+                  type="text"
+                  autoComplete="username"
                 />
-              </div>
-              <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
-                <div className="flex justify-between items-end">
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu (Không bắt buộc với MVP)</label>
-                  <span className="text-[11px] font-label font-semibold text-tertiary hover:underline cursor-pointer transition-all">Quên mật khẩu?</span>
-                </div>
-                <input className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white" placeholder="••••••••" type="password" />
               </div>
               <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
                 <button 
                   onClick={() => handleLogin("teacher")} 
                   disabled={!!isLoading}
-                  className="block w-full text-center py-4 bg-primary text-white font-serif font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 mb-3 disabled:opacity-50"
+                  className="block w-full text-center py-4 bg-primary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 mb-3 disabled:opacity-50"
                 >
                   {isLoading === "teacher" ? "Đang xử lý..." : "Đăng nhập Giáo viên"}
                 </button>
               </div>
               <div style={{ animation: "fadeIn 0.5s ease-out 0.8s both" }}>
-                <button 
-                  onClick={() => handleLogin("student")} 
+                <button
+                  onClick={() => handleLogin("student")}
                   disabled={!!isLoading}
-                  className="block w-full text-center py-4 bg-secondary text-white font-serif font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-secondary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50"
+                  className="block w-full text-center py-4 bg-secondary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-secondary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50"
                 >
                   {isLoading === "student" ? "Đang xử lý..." : "Đăng nhập Học sinh"}
+                </button>
+              </div>
+              <div style={{ animation: "fadeIn 0.5s ease-out 0.85s both" }}>
+                <button
+                  onClick={() => handleLogin("admin")}
+                  disabled={!!isLoading}
+                  className="block w-full text-center py-3 bg-[#C9A84C] text-white font-headline font-bold text-base rounded-full shadow-lg hover:shadow-xl hover:shadow-[#C9A84C]/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50"
+                >
+                  {isLoading === "admin" ? "Đang xử lý..." : "Đăng nhập Quản trị"}
                 </button>
               </div>
             </div>
@@ -176,7 +180,7 @@ export default function LoginPage() {
       <footer className="bg-[#f9f9f6] w-full py-12 px-8 relative z-10">
         <div className="bg-[#f2f2ed] h-[1px] w-full mb-8"></div>
         <div className="flex flex-col items-center gap-4 max-w-[1440px] mx-auto pt-8">
-          <div className="font-serif font-semibold text-[#003857]">Văn Học AI</div>
+          <div className="font-headline font-semibold text-[#003857]">Văn Học AI</div>
           <p className="font-sans text-xs tracking-wide text-[#1a1c1b]/60 text-center">© 2026 Văn Học AI. Kiến tạo tương lai văn học Việt qua nét bút AI.</p>
         </div>
       </footer>

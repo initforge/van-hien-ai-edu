@@ -1,16 +1,23 @@
 ﻿import React, { useState } from 'react';
+import {
+  CLASS_STATS_CARDS,
+  CLASS_STATS_BARS,
+  STUDENT_STATS_ROWS,
+  STYLE_CARDS,
+  COMMON_ERRORS,
+  TOKEN_FEATURES,
+  TOKEN_DETAIL_ROWS,
+} from '../../constants/aiReview';
 
-type Tab = "class_stats" | "student_stats" | "style" | "tokens" | "rubrics";
+type Tab = 'class_stats' | 'student_stats' | 'style' | 'tokens' | 'rubrics';
 
 const TAB_LABELS: Record<Tab, string> = {
-  class_stats: "Thống kê lớp",
-  student_stats: "Thống kê học sinh",
-  style: "Văn phong",
-  tokens: "Sử dụng Token",
-  rubrics: "Bảo mẫu AI",
+  class_stats: 'Thống kê lớp',
+  student_stats: 'Thống kê học sinh',
+  style: 'Văn phong',
+  tokens: 'Sử dụng Token',
+  rubrics: 'Bảo mẫu AI',
 };
-
-
 
 export default function TeacherAIReviewPage() {
   const [activeTab, setActiveTab] = useState<Tab>("class_stats");
@@ -20,7 +27,7 @@ export default function TeacherAIReviewPage() {
       {/* Header */}
       <div className="mb-12">
         <span className="text-xs font-bold text-secondary uppercase tracking-[0.15em] mb-2 block">Trung tâm điều hành AI</span>
-        <h2 className="text-5xl font-serif text-primary leading-tight">Phân tích &amp; Duyệt AI</h2>
+        <h2 className="text-5xl font-headline text-primary leading-tight">Phân tích &amp; Duyệt AI</h2>
       </div>
 
       {/* Sub-navigation Tabs */}
@@ -46,12 +53,7 @@ export default function TeacherAIReviewPage() {
       {activeTab === "class_stats" && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[
-              { label: "Tổng bài đã chấm", value: "248", icon: "grading", color: "text-primary" },
-              { label: "Điểm TB các lớp", value: "7.6", icon: "analytics", color: "text-secondary" },
-              { label: "Bài chờ chấm", value: "15", icon: "pending_actions", color: "text-amber-600" },
-              { label: "Lớp xuất sắc nhất", value: "9B", icon: "emoji_events", color: "text-yellow-600" },
-            ].map((s, i) => (
+            {CLASS_STATS_CARDS.map((s, i) => (
               <div key={i} className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border-[0.5px] border-outline-variant/30">
                 <span className={`material-symbols-outlined ${s.color} text-3xl mb-3 block`} style={{ fontVariationSettings: "'FILL' 1" }}>{s.icon}</span>
                 <p className="text-3xl font-headline font-bold text-primary mb-1">{s.value}</p>
@@ -62,11 +64,7 @@ export default function TeacherAIReviewPage() {
           <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
             <h3 className="font-headline text-xl font-bold text-primary mb-6">Điểm trung bình theo lớp</h3>
             <div className="space-y-4">
-              {[
-                { name: "Lớp 8A", avg: 7.2, count: 35 },
-                { name: "Lớp 9B", avg: 8.1, count: 32 },
-                { name: "Lớp 9C", avg: 7.8, count: 30 },
-              ].map((cls, i) => (
+              {CLASS_STATS_BARS.map((cls, i) => (
                 <div key={i} className="flex items-center gap-4">
                   <span className="w-16 text-sm font-bold text-primary">{cls.name}</span>
                   <div className="flex-1 h-3 bg-surface-container-highest rounded-full overflow-hidden">
@@ -96,13 +94,7 @@ export default function TeacherAIReviewPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
-                {[
-                  { name: "Nguyễn Thị Mai", cls: "8A", submitted: 12, avg: 8.2, trend: "+0.5" },
-                  { name: "Trần Văn Hào", cls: "8A", submitted: 10, avg: 6.8, trend: "-0.3" },
-                  { name: "Lê Minh Anh", cls: "9B", submitted: 11, avg: 7.9, trend: "+0.8" },
-                  { name: "Phạm Hương Giang", cls: "9B", submitted: 12, avg: 8.5, trend: "+0.2" },
-                  { name: "Vũ Thị Hồng", cls: "9C", submitted: 9, avg: 7.1, trend: "+0.1" },
-                ].map((s, i) => (
+                {STUDENT_STATS_ROWS.map((s, i) => (
                   <tr key={i} className="hover:bg-primary/5 transition-colors">
                     <td className="px-6 py-4 font-semibold text-primary">{s.name}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{s.cls}</td>
@@ -125,11 +117,7 @@ export default function TeacherAIReviewPage() {
       {activeTab === "style" && (
         <div className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { label: "Lỗi chính tả phổ biến", value: "23", desc: "Lỗi thường gặp nhất: sai dấu thanh", icon: "spellcheck", color: "bg-red-50 text-red-600" },
-              { label: "Từ vựng trùng lặp", value: "8.4%", desc: "Tỷ lệ lặp từ trung bình của lớp", icon: "content_copy", color: "bg-amber-50 text-amber-600" },
-              { label: "Độ phong phú ngôn ngữ", value: "7.2/10", desc: "Dựa trên đa dạng từ vựng và cấu trúc câu", icon: "auto_stories", color: "bg-blue-50 text-blue-600" },
-            ].map((s, i) => (
+            {STYLE_CARDS.map((s, i) => (
               <div key={i} className={`p-6 rounded-2xl border-[0.5px] border-outline-variant/30 ${s.color.split(' ')[0]}`}>
                 <span className={`material-symbols-outlined ${s.color.split(' ')[1]} text-3xl mb-3 block`}>{s.icon}</span>
                 <p className="text-3xl font-headline font-bold text-primary mb-1">{s.value}</p>
@@ -141,13 +129,7 @@ export default function TeacherAIReviewPage() {
           <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
             <h3 className="font-headline text-xl font-bold text-primary mb-6">Lỗi phổ biến nhất</h3>
             <div className="space-y-3">
-              {[
-                { error: "sai dấu hỏi/ngã", count: 45 },
-                { error: "thiếu dấu phẩy trong câu ghép", count: 38 },
-                { error: "lặp liên từ \"và\"", count: 31 },
-                { error: "viết tắt không hợp lệ", count: 22 },
-                { error: "sai cấu trúc câu phức", count: 18 },
-              ].map((e, i) => (
+              {COMMON_ERRORS.map((e, i) => (
                 <div key={i} className="flex items-center gap-4">
                   <span className="w-6 text-right text-sm font-bold text-slate-400">{i + 1}</span>
                   <span className="flex-1 text-sm text-on-surface font-medium">{e.error}</span>
@@ -182,12 +164,7 @@ export default function TeacherAIReviewPage() {
             <div className="col-span-2 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
               <h3 className="font-headline text-xl font-bold text-primary mb-6">Token theo tính năng</h3>
               <div className="space-y-4">
-                {[
-                  { name: "Chấm bài", tokens: 18400, pct: 41 },
-                  { name: "Chatbot nhân vật", tokens: 12100, pct: 27 },
-                  { name: "Ra đề thi", tokens: 9500, pct: 21 },
-                  { name: "Đa Vũ Trụ", tokens: 5230, pct: 11 },
-                ].map((f, i) => (
+                {TOKEN_FEATURES.map((f, i) => (
                   <div key={i} className="flex items-center gap-4">
                     <span className="w-28 text-sm font-medium text-slate-600">{f.name}</span>
                     <div className="flex-1 h-3 bg-surface-container-highest rounded-full overflow-hidden">
@@ -219,15 +196,7 @@ export default function TeacherAIReviewPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/10">
-                {[
-                  { date: "20/03", feature: "Chấm bài", desc: "Lớp 8A — Phân tích Lão Hạc (5 bài)", input: 3200, output: 1800, total: 5000 },
-                  { date: "20/03", feature: "Chatbot", desc: "Cuộc trò chuyện với nhân vật Lão Hạc", input: 800, output: 1200, total: 2000 },
-                  { date: "19/03", feature: "Ra đề", desc: "Đề thi Lớp 9 — Truyện Kiều", input: 1500, output: 2500, total: 4000 },
-                  { date: "19/03", feature: "Chấm bài", desc: "Lớp 9B — Cảm nhận Đồng chí (8 bài)", input: 4800, output: 3200, total: 8000 },
-                  { date: "18/03", feature: "Đa Vũ Trụ", desc: "Tạo câu chuyện thay thế — Tắt đèn", input: 2000, output: 3230, total: 5230 },
-                  { date: "18/03", feature: "Chatbot", desc: "Cuộc trò chuyện với Thúy Kiều", input: 1500, output: 2100, total: 3600 },
-                  { date: "17/03", feature: "Ra đề", desc: "Bài tập Nghị luận xã hội", input: 1000, output: 1500, total: 2500 },
-                ].map((row, i) => (
+                {TOKEN_DETAIL_ROWS.map((row, i) => (
                   <tr key={i} className="hover:bg-primary/5 transition-colors">
                     <td className="px-6 py-4 text-sm text-slate-600">{row.date}</td>
                     <td className="px-6 py-4">
@@ -262,7 +231,7 @@ export default function TeacherAIReviewPage() {
               <h3 className="font-headline text-2xl font-bold text-primary mb-2">Quản lý Tiêu chí chấm điểm AI</h3>
               <p className="text-outline text-sm max-w-2xl">Thiết lập các trọng số đánh giá (Rubrics) để định hướng cho AI khi tự động phân tích bài viết của học sinh, đảm bảo bám sát barem giáo dục chuẩn.</p>
             </div>
-            <button className="bg-gradient-to-r from-primary to-primary-container text-white px-5 py-2.5 rounded-full font-serif font-bold hover:shadow-lg active:scale-95 transition-all text-sm flex items-center gap-2">
+            <button className="bg-gradient-to-r from-primary to-primary-container text-white px-5 py-2.5 rounded-full font-headline font-bold hover:shadow-lg active:scale-95 transition-all text-sm flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px]">add</span> Thêm tiêu chí mới
             </button>
           </div>

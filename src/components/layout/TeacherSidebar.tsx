@@ -19,7 +19,7 @@ export function TeacherSidebar() {
     <aside className="bg-[#1B4F72] dark:bg-[#002842] h-screen w-72 fixed left-0 top-0 overflow-y-auto z-40 flex flex-col py-8 justify-between shadow-2xl shadow-blue-900/20">
       <div>
         <div className="px-8 mb-10">
-          <h1 className="text-2xl font-bold tracking-tight text-white font-serif">Văn Học AI</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white font-headline">Văn Học AI</h1>
           <p className="text-blue-100/60 text-xs tracking-widest uppercase mt-1">Quản Trị Giáo Viên</p>
         </div>
         <nav className="space-y-1">
@@ -50,7 +50,7 @@ export function TeacherSidebar() {
             {user?.name?.[0]?.toUpperCase() || 'T'}
           </div>
           <div>
-            <p className="text-sm font-bold text-white font-serif leading-tight">{user?.name || 'Giáo viên'}</p>
+            <p className="text-sm font-bold text-white font-headline leading-tight">{user?.name || 'Giáo viên'}</p>
             <p className="text-[10px] text-blue-100/60 uppercase tracking-widest">Giáo viên Ngữ Văn</p>
           </div>
         </div>

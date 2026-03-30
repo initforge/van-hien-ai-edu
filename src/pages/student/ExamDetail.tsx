@@ -1,20 +1,162 @@
-import React, { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+
+const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any>);
+
+// Hardcoded passage for fallback when no API data
+const FALLBACK_PASSAGE = [
+  "Mặt lão đột nhiên co rúm lại. Những vết nhăn xô lại với nhau, ép cho nước mắt chảy ra. Cái đầu lão ngoẹo về một bên và cái miệng móm mém của lão mếu như con nít. Lão hu hu khóc...",
+  "— Khốn nạn... Ông giáo ơi! Nó có biết gì đâu! Nó kiến tôi đi gọi về thì nó vẫy đuôi mừng. Tôi cho nó ăn cơm xong thì thằng Mục, thằng Xiên, hai thằng chúng nó nấp sẵn ở trong nhà, chỉ việc xông ra mà tóm lấy nó. Nó đang ăn thì thằng Mục tóm được hai cẳng sau của nó dốc ngược nó lên...",
+  "Này! Ông giáo ạ! Cái giống nó cũng khôn! Nó cứ làm in như nó trách tôi; nó bảo tôi rằng: \"A! Lão già tệ lắm! Tôi ăn ở với lão như thế mà lão xử với tôi như thế này à?\".",
+  "Tôi già bằng này tuổi đầu rồi còn đi đánh lừa một con chó, nó không ngờ tôi nỡ tâm lừa nó!",
+];
+
+function formatTimer(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 export default function ExamDetailPage() {
   const { id: examId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [autoSaved, setAutoSaved] = useState(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { data } = useSWR(examId ? `/api/exam-detail?id=${examId}` : null, fetcher);
+
+  const exam = data?.exam;
+  const questions: any[] = data?.questions || [];
+
+  const totalSeconds = (exam?.duration || 45) * 60;
+  const [elapsed, setElapsed] = useState(0);
+  const remaining = Math.max(0, totalSeconds - elapsed);
+
+  const draftKey = examId ? `exam-draft-${examId}` : '';
+  const [answers, setAnswers] = useState<Record<string, string>>(() => {
+    if (!draftKey) return {};
+    try { return JSON.parse(localStorage.getItem(draftKey) || '{}'); } catch { return {}; }
+  });
+
+  // Restore textarea values on mount/change
+  useEffect(() => {
+    if (!examId) return;
+    const saved: Record<string, string> = {};
+    try { Object.assign(saved, JSON.parse(localStorage.getItem(`exam-draft-${examId}`) || '{}')); } catch { /* ignore */ }
+    Object.entries(saved).forEach(([id, val]) => {
+      const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${id}"]`);
+      if (el) el.value = val as string;
+    });
+  }, [examId, data]);
+
+  // Timer tick
+  useEffect(() => {
+    if (!examId) return;
+    tickRef.current = setInterval(() => {
+      setElapsed(prev => {
+        const next = prev + 1;
+        if (next >= totalSeconds) {
+          if (tickRef.current) clearInterval(tickRef.current);
+          handleAutoSubmit();
+        }
+        return next;
+      });
+    }, 1000);
+    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examId, totalSeconds]);
+
+  // Auto-save every 5 seconds
+  useEffect(() => {
+    if (!examId) return;
+    autoSaveTimer.current = setInterval(() => {
+      const ans: Record<string, string> = {};
+      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
+        ans[el.dataset.answerId || el.id] = el.value;
+      });
+      localStorage.setItem(`exam-draft-${examId}`, JSON.stringify(ans));
+      setAutoSaved(true);
+      setTimeout(() => setAutoSaved(false), 1500);
+    }, 5000);
+    return () => { if (autoSaveTimer.current) clearInterval(autoSaveTimer.current); };
+  }, [examId]);
+
+  const handleAutoSubmit = useCallback(async () => {
+    if (!user || !examId) return;
+    setIsSubmitting(true);
+    const ans: Record<string, string> = {};
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
+      ans[el.dataset.answerId || el.id] = el.value;
+    });
+    try {
+      await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examId, answers: ans })
+      });
+    } catch { /* ignore timeout */ }
+    navigate('/student/results');
+  }, [user, examId, navigate]);
 
   const handleSubmit = async () => {
+    if (!user) {
+      setError('Vui lòng đăng nhập để nộp bài.');
+      return;
+    }
     setIsSubmitting(true);
-    await fetch('/api/submissions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ examId, studentId: 'student-1' })
+    setError('');
+
+    const ans: Record<string, string> = {};
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
+      ans[el.dataset.answerId || el.id] = el.value;
     });
-    navigate('/student/results');
+
+    try {
+      const res = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examId, answers: ans })
+      });
+      if (!res.ok) throw new Error('Submit failed');
+      if (examId) localStorage.removeItem(`exam-draft-${examId}`);
+      navigate('/student/results');
+    } catch {
+      setError('Nộp bài thất bại. Vui lòng thử lại.');
+      setIsSubmitting(false);
+    }
   };
+
+  // Progress
+  const totalQuestions = questions.length > 0 ? questions.length : 5; // fallback count for hardcoded
+  const answeredCount = (() => {
+    if (questions.length > 0) {
+      return questions.filter((q: any) => {
+        const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${q.id}"]`);
+        return el && el.value.trim().length > 0;
+      }).length;
+    }
+    return Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]'))
+      .filter(el => el.value.trim().length > 0).length;
+  })();
+  const progressPct = Math.round((answeredCount / totalQuestions) * 100);
+
+  const passageContent = exam?.passage
+    ? exam.passage.split('\n').filter((p: string) => p.trim().length > 0)
+    : FALLBACK_PASSAGE;
+
+  const examTitle = exam?.title || 'Đang tải...';
+  const examDuration = exam?.duration ? `${exam.duration} phút` : '';
+  const workTitle = exam?.workTitle || 'Lão Hạc';
+  const author = exam?.author || 'Nam Cao';
 
   return (
     <div className="bg-surface min-h-screen text-on-surface">
@@ -22,23 +164,24 @@ export default function ExamDetailPage() {
       <header className="fixed top-0 left-0 right-0 z-50 bg-[#f9f9f6]/80 backdrop-blur-xl shadow-[0_12px_40px_-10px_rgba(26,28,27,0.06)]">
         <div className="flex justify-between items-center w-full px-8 py-4 max-w-full mx-auto">
           <div className="flex items-center gap-6">
-            <Link to="/student/dashboard" className="text-xl font-bold tracking-tight text-primary font-serif">Văn Học AI</Link>
+            <Link to="/student/dashboard" className="text-xl font-bold tracking-tight text-primary font-headline">Văn Học AI</Link>
             <div className="h-4 w-px bg-outline-variant/30"></div>
-            <h1 className="text-primary font-bold border-b-2 border-primary font-serif">Đề thi giữa kỳ — Lớp 8</h1>
+            <h1 className="text-primary font-bold border-b-2 border-primary font-headline">{examTitle}</h1>
           </div>
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-full border border-outline-variant/10 shadow-sm">
             <span className="material-symbols-outlined text-primary text-sm">schedule</span>
-            <span className="font-medium text-primary tracking-widest tabular-nums font-label">01:28:45</span>
+            <span className="font-medium text-primary tracking-widest tabular-nums font-label">{formatTimer(remaining)}</span>
           </div>
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 text-secondary text-sm font-medium">
               <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-              <span>Đã tự động lưu nháp</span>
+              <span>{autoSaved ? 'Đã lưu nháp' : 'Tự động lưu nháp'}</span>
             </div>
+            {error && <span className="text-red-500 text-sm font-medium">{error}</span>}
             <button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-tertiary hover:bg-[#8a1b13] disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold font-serif transition-colors shadow-lg shadow-tertiary/20 active:scale-95"
+              className="bg-tertiary hover:bg-[#8a1b13] disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold font-headline transition-colors shadow-lg shadow-tertiary/20 active:scale-95"
             >
               {isSubmitting ? 'Đang nộp...' : 'Nộp bài'}
             </button>
@@ -54,14 +197,13 @@ export default function ExamDetailPage() {
           <div className="bg-white/80 backdrop-blur-md rounded-2xl p-10 overflow-y-auto max-h-[819px] sticky top-28 border-[0.5px] border-outline-variant/30 shadow-[0_4px_20px_-5px_rgba(26,28,27,0.06)]">
             <div className="mb-8 relative z-10">
               <span className="text-[10px] font-bold tracking-[0.2em] text-primary/70 uppercase block mb-2">Phần I: Đọc hiểu (3.0 điểm)</span>
-              <h2 className="font-serif text-3xl font-bold text-primary leading-tight">Lão Hạc</h2>
-              <p className="text-sm text-on-surface-variant/80 italic mt-1 font-medium">— Nam Cao</p>
+              <h2 className="font-headline text-3xl font-bold text-primary leading-tight">{workTitle}</h2>
+              <p className="text-sm text-on-surface-variant/80 italic mt-1 font-medium">— {author}</p>
             </div>
-            <article className="font-serif text-lg leading-[1.8] text-on-surface space-y-6 relative z-10">
-              <p>Mặt lão đột nhiên co rúm lại. Những vết nhăn xô lại với nhau, ép cho nước mắt chảy ra. Cái đầu lão ngoẹo về một bên và cái miệng móm mém của lão mếu như con nít. Lão hu hu khóc...</p>
-              <p>— Khốn nạn... Ông giáo ơi! Nó có biết gì đâu! Nó kiến tôi đi gọi về thì nó vẫy đuôi mừng. Tôi cho nó ăn cơm xong thì thằng Mục, thằng Xiên, hai thằng chúng nó nấp sẵn ở trong nhà, chỉ việc xông ra mà tóm lấy nó. Nó đang ăn thì thằng Mục tóm được hai cẳng sau của nó dốc ngược nó lên...</p>
-              <p>Này! Ông giáo ạ! Cái giống nó cũng khôn! Nó cứ làm in như nó trách tôi; nó bảo tôi rằng: "A! Lão già tệ lắm! Tôi ăn ở với lão như thế mà lão xử với tôi như thế này à?".</p>
-              <p>Tôi già bằng này tuổi đầu rồi còn đi đánh lừa một con chó, nó không ngờ tôi nỡ tâm lừa nó!</p>
+            <article className="font-headline text-lg leading-[1.8] text-on-surface space-y-6 relative z-10">
+              {passageContent.map((para: string, i: number) => (
+                <p key={i}>{para}</p>
+              ))}
             </article>
             <div className="mt-12 pt-8 border-t border-outline-variant/20 relative z-10">
               <div className="relative w-full h-64 rounded-xl overflow-hidden bg-gradient-to-br from-primary/5 to-secondary/5 flex items-center justify-center">
@@ -73,21 +215,52 @@ export default function ExamDetailPage() {
           {/* Right: Questions */}
           <div className="space-y-10 py-4">
             <div className="space-y-8">
-              <div className="group">
-                <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 1 (0.5 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Phương thức biểu đạt chính được sử dụng trong đoạn trích trên là gì?</p>
-                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-serif text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
-              </div>
-              <div className="group">
-                <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 2 (0.5 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Tìm những từ ngữ miêu tả ngoại hình và cử chỉ của Lão Hạc khi kể chuyện bán chó.</p>
-                <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-serif text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" />
-              </div>
-              <div className="group">
-                <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 3 (2.0 điểm)</label>
-                <p className="font-serif text-xl mb-4 text-on-surface font-semibold">Vì sao Lão Hạc lại cảm thấy mình "nỡ tâm lừa" một con chó? Phân tích diễn biến tâm lý của nhân vật.</p>
-                <textarea className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-serif text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400" placeholder="Viết phân tích của bạn ở đây..." rows={6}></textarea>
-              </div>
+              {questions.length > 0 ? (
+                questions.map((q: any) => (
+                  <div key={q.id} className="group">
+                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">
+                      Câu {q.order_index} ({q.points || 0} điểm)
+                    </label>
+                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">{q.content}</p>
+                    {q.type === 'essay' ? (
+                      <textarea
+                        className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-headline text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400"
+                        placeholder="Viết câu trả lời của bạn..."
+                        rows={6}
+                        data-answer-id={q.id}
+                        defaultValue={answers[q.id] || ''}
+                      />
+                    ) : (
+                      <input
+                        className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400"
+                        placeholder="Nhập câu trả lời của bạn..."
+                        type="text"
+                        data-answer-id={q.id}
+                        defaultValue={answers[q.id] || ''}
+                      />
+                    )}
+                  </div>
+                ))
+              ) : (
+                <>
+                  {/* Fallback hardcoded questions */}
+                  <div className="group">
+                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 1 (0.5 điểm)</label>
+                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Phương thức biểu đạt chính được sử dụng trong đoạn trích trên là gì?</p>
+                    <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" data-answer-id="q1" />
+                  </div>
+                  <div className="group">
+                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 2 (0.5 điểm)</label>
+                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Tìm những từ ngữ miêu tả ngoại hình và cử chỉ của Lão Hạc khi kể chuyện bán chó.</p>
+                    <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" data-answer-id="q2" />
+                  </div>
+                  <div className="group">
+                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 3 (2.0 điểm)</label>
+                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Vì sao Lão Hạc lại cảm thấy mình "nỡ tâm lừa" một con chó? Phân tích diễn biến tâm lý của nhân vật.</p>
+                    <textarea className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-headline text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400" placeholder="Viết phân tích của bạn ở đây..." rows={6} data-answer-id="q3"></textarea>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </section>
@@ -102,10 +275,10 @@ export default function ExamDetailPage() {
           {/* Essay Question 1 */}
           <div className="space-y-6">
             <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-serif text-2xl font-bold text-primary">Câu 1 (2.0 điểm): Nghị luận xã hội</h3>
+              <h3 className="font-headline text-2xl font-bold text-primary">Câu 1 (2.0 điểm): Nghị luận xã hội</h3>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: 200 - 300</span>
             </div>
-            <p className="font-serif text-xl text-on-surface leading-relaxed italic font-medium">
+            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
               Viết một đoạn văn ngắn bàn về ý nghĩa của lòng dũng cảm trong cuộc sống hiện đại.
             </p>
             <div className="relative group mt-4">
@@ -118,7 +291,7 @@ export default function ExamDetailPage() {
                   <div className="w-px h-6 bg-outline-variant/20"></div>
                   <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_quote</span>
                 </div>
-                <textarea className="w-full h-full min-h-[250px] border-0 focus:ring-0 font-serif text-lg leading-[2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Bắt đầu viết bài luận của bạn..."></textarea>
+                <textarea className="w-full h-full min-h-[250px] border-0 focus:ring-0 font-headline text-lg leading-[2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Bắt đầu viết bài luận của bạn..." data-answer-id="essay1"></textarea>
               </div>
             </div>
           </div>
@@ -126,10 +299,10 @@ export default function ExamDetailPage() {
           {/* Essay Question 2 */}
           <div className="space-y-6">
             <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-serif text-2xl font-bold text-primary">Câu 2 (5.0 điểm): Nghị luận văn học</h3>
+              <h3 className="font-headline text-2xl font-bold text-primary">Câu 2 (5.0 điểm): Nghị luận văn học</h3>
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: &gt; 600</span>
             </div>
-            <p className="font-serif text-xl text-on-surface leading-relaxed italic font-medium">
+            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
               Phân tích giá trị nhân đạo của tác phẩm "Lão Hạc" qua nhân vật cùng tên.
             </p>
             <div className="relative group mt-4">
@@ -149,7 +322,7 @@ export default function ExamDetailPage() {
                     Chế độ tập trung
                   </div>
                 </div>
-                <textarea className="w-full h-full min-h-[600px] border-0 focus:ring-0 font-serif text-lg leading-[2.2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Phân tích sâu về nhân vật Lão Hạc..."></textarea>
+                <textarea className="w-full h-full min-h-[600px] border-0 focus:ring-0 font-headline text-lg leading-[2.2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Phân tích sâu về nhân vật Lão Hạc..." data-answer-id="essay2"></textarea>
                 <div className="absolute bottom-6 right-6 flex justify-end">
                   <div className="bg-primary hover:bg-primary-container transition-colors backdrop-blur-md text-white px-5 py-2.5 rounded-full text-[10px] font-bold tracking-widest shadow-xl flex items-center gap-2 cursor-default">
                     <span className="material-symbols-outlined text-[16px]">text_fields</span>
@@ -168,15 +341,16 @@ export default function ExamDetailPage() {
           <div className="flex items-center gap-8">
             <div className="flex items-center gap-4">
               <div className="w-40 h-1.5 bg-surface-container-high rounded-full overflow-hidden">
-                <div className="bg-secondary h-full w-[45%]"></div>
+                <div className="bg-secondary h-full transition-all duration-500" style={{ width: `${progressPct}%` }}></div>
               </div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tiến độ: 45%</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tiến độ: {progressPct}%</span>
             </div>
             <div className="text-[10px] font-bold text-secondary uppercase tracking-widest flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
               Đang kết nối AI hỗ trợ
             </div>
           </div>
+          <span className="text-xs text-outline font-medium">{examDuration}</span>
         </div>
       </footer>
 
