@@ -1,11 +1,23 @@
-import { SignJWT } from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
+import { revokeToken, isTokenRevoked } from './_kv.js';
 
-function verifyPassword(inputPw, storedHash) {
+async function verifyPassword(inputPw, storedHash) {
   try {
-    const [salt, hash] = storedHash.split(':');
-    const inputHash = crypto.pbkdf2Sync(inputPw, salt, 100000, 64, 'sha512').toString('hex');
-    return inputHash === hash;
-  } catch {
+    const [salt, targetHash] = storedHash.split(':');
+    const saltBytes = new TextEncoder().encode(salt);
+    const key = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(inputPw),
+      { name: 'PBKDF2' }, false, ['deriveBits']
+    );
+    const derived = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-512' },
+      key, 512
+    );
+    const derivedHex = Array.from(new Uint8Array(derived))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    return derivedHex === targetHash;
+  } catch (err) {
+    console.error('verifyPassword error:', err?.message || err);
     return false;
   }
 }
@@ -35,7 +47,7 @@ export async function onRequestPost({ request, env }) {
     }
 
     // Verify password
-    if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
+    if (!user.password_hash || !(await verifyPassword(password, user.password_hash))) {
       return new Response(JSON.stringify({ error: "Mật khẩu không đúng." }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
@@ -51,7 +63,8 @@ export async function onRequestPost({ request, env }) {
       console.error("DB log failed:", e);
     }
 
-    // Generate JWT
+    // Generate JWT with unique jti for revocation support
+    const jti = crypto.randomUUID();
     const token = await new SignJWT({
       id: user.id,
       name: user.name,
@@ -59,6 +72,7 @@ export async function onRequestPost({ request, env }) {
       avatar: user.avatar
     })
       .setProtectedHeader({ alg: 'HS256' })
+      .setJti(jti)
       .setIssuedAt()
       .setExpirationTime('24h')
       .sign(new TextEncoder().encode(env.JWT_SECRET));
@@ -71,7 +85,7 @@ export async function onRequestPost({ request, env }) {
     };
     const redirect = redirectMap[user.role] || '/';
 
-    const cookie = `token=${token}; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=Strict`;
+    const cookie = `token=${token}; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=Lax`;
 
     return new Response(JSON.stringify({ redirect, success: true, user: { id: user.id, name: user.name, role: user.role } }), {
       headers: {
@@ -87,9 +101,24 @@ export async function onRequestPost({ request, env }) {
   }
 }
 
-// DELETE /api/auth — logout
+// DELETE /api/auth — logout (revoke token)
 export async function onRequestDelete({ request, env }) {
-  const cookie = `token=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Strict`;
+  // Extract and revoke the current token
+  const cookieHeader = request.headers.get('Cookie') || '';
+  const tokenMatch = cookieHeader.match(/token=([^;]+)/);
+  if (tokenMatch && env.CACHE) {
+    try {
+      // Verify to get jti, then revoke
+      const { payload } = await jwtVerify(tokenMatch[1], new TextEncoder().encode(env.JWT_SECRET));
+      if (payload.jti) {
+        await revokeToken(env.CACHE, payload.jti, 86400);
+      }
+    } catch {
+      // Invalid token already — nothing to revoke
+    }
+  }
+
+  const cookie = `token=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax`;
   return new Response(JSON.stringify({ success: true }), {
     headers: {
       "Content-Type": "application/json",

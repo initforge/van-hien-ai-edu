@@ -18,7 +18,7 @@ export async function onRequestGet({ env, data }) {
     }
   } catch (e) {
     console.error('submissions GET error:', e);
-    return new Response(JSON.stringify({ error: 'Lỗi khi tải bài nộp.' }), { status: 500, profile: 'dynamic' });
+    return new Response(JSON.stringify({ error: 'Lỗi khi tải bài nộp.' }), { status: 500, profile: 'nocache' });
   }
 }
 
@@ -61,14 +61,19 @@ export async function onRequestPost({ request, env, data }) {
       "INSERT INTO submissions (id, exam_id, student_id, status, submitted_at) VALUES (?, ?, ?, ?, ?)"
     ).bind(id, examId, user.id, 'submitted', now).run();
 
-    // Persist each answer to submission_answers
-    for (const [questionId, content] of Object.entries(answers)) {
+    // Batch-insert all answers in one parameterized statement
+    const answerEntries = Object.entries(answers);
+    if (answerEntries.length > 0) {
+      const placeholders = answerEntries.map(() => '(?, ?, ?, ?)').join(', ');
+      const binds = answerEntries.flatMap(([questionId, content]) => [
+        crypto.randomUUID(), id, String(questionId), String(content)
+      ]);
       await env.DB.prepare(
-        "INSERT INTO submission_answers (id, submission_id, question_id, content) VALUES (?, ?, ?, ?)"
-      ).bind(crypto.randomUUID(), id, questionId, String(content)).run();
+        `INSERT INTO submission_answers (id, submission_id, question_id, content) VALUES ${placeholders}`
+      ).bind(...binds).run();
     }
 
-    return cachedJson({ id, examId, status: 'submitted', submittedAt: now }, { profile: 'nocache' });
+    return cachedJson({ id, examId, status: 'submitted', submittedAt: now }, { status: 201, profile: 'nocache' });
   } catch (e) {
     console.error('submissions POST error:', e);
     return new Response(JSON.stringify({ error: 'Lỗi khi nộp bài. Vui lòng thử lại.' }), { status: 500, profile: 'nocache' });

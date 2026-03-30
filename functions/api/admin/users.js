@@ -1,16 +1,22 @@
 import { cachedJson } from '../_cache.js';
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ env, data, request }) {
   try {
     if (data?.user?.role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
     }
 
-    const { results } = await env.DB.prepare(
-      "SELECT id, name, email, role, username, avatar, created_at AS createdAt FROM users ORDER BY created_at DESC"
-    ).all();
+    const url = new URL(request.url);
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
+    const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
 
-    return cachedJson(results || [], { profile: 'dynamic' });
+    const [rowsResult, countResult] = await Promise.all([
+      env.DB.prepare(
+        "SELECT id, name, email, role, username, avatar, created_at AS createdAt FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?"
+      ).bind(limit, offset).all(),
+      env.DB.prepare("SELECT COUNT(*) AS total FROM users").first(),
+    ]);
+    return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to fetch users' }), { status: 500 });
   }

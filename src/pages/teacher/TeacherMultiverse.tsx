@@ -5,10 +5,10 @@ import { useNavigate } from 'react-router-dom';
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function TeacherMultiversePage() {
-  const { data: rawStorylines, mutate, isLoading } = useSWR('/api/storylines', fetcher);
-  const { data: rawCharacters } = useSWR('/api/characters', fetcher);
-  const storylines = rawStorylines as any[];
-  const characters = (rawCharacters || []) as any[];
+  const { data: storylinesData, mutate, isLoading } = useSWR('/api/storylines', fetcher);
+  const { data: charactersData } = useSWR('/api/characters', fetcher);
+  const storylines = storylinesData?.data ?? [];
+  const characters = charactersData?.data ?? [];
 
   // Derive unique works from characters
   const works = React.useMemo(() => {
@@ -38,7 +38,7 @@ export default function TeacherMultiversePage() {
       setIsCreating(false);
       setFormData({ workId: works[0]?.id || '', branchPoint: '' });
     } catch (err) {
-      console.error(err);
+      console.error('Failed to create storyline:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -72,7 +72,7 @@ export default function TeacherMultiversePage() {
                  <p className="font-headline">Chưa có nhánh cốt truyện nào được khởi tạo.</p>
                </div>
             ) : (
-              storylines?.map((story: any, i: number) => (
+              storylines?.map((story: { id: string; workId: string; workTitle?: string; branchPoint: string; createdAt: string }, i: number) => (
                 <div key={story.id} className="group p-6 bg-white/80 backdrop-blur-md rounded-2xl border border-outline-variant/30 hover:shadow-xl hover:border-secondary/30 transition-all duration-300 relative overflow-hidden flex flex-col justify-between" style={{ animation: `fadeIn 0.5s ease-out ${i * 0.1}s both` }}>
                    {/* Background Decorative Blur */}
                    <div className="absolute -right-10 -top-10 w-32 h-32 bg-secondary/5 rounded-full blur-2xl group-hover:bg-secondary/10 transition-colors pointer-events-none"></div>

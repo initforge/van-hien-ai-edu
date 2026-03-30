@@ -51,6 +51,6 @@ export async function onRequestGet({ env, data }) {
       }, { profile: 'dynamic' });
     }
   } catch (e) {
-    return cachedJson({ error: 'Failed' }, { status: 500, profile: 'dynamic' });
+    return cachedJson({ error: 'Failed to load stats.' }, { status: 500, profile: 'nocache' });
   }
 }

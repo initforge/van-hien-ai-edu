@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { formatLogTime } from '../../lib/utils';
 import useSWR from 'swr';
+import { fetcher } from '../../lib/fetcher';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 const ACTION_COLORS: Record<string, string> = {
   create_user: 'bg-green-50 text-green-600',
@@ -70,10 +71,10 @@ export default function AdminLogsPage() {
                 <tr><td colSpan={4} className="p-8 text-center text-outline">Đang tải...</td></tr>
               ) : logs.length === 0 ? (
                 <tr><td colSpan={4} className="p-8 text-center text-outline">Chưa có nhật ký</td></tr>
-              ) : logs.map((log: any) => (
+              ) : logs.map((log: { id: string; user_name: string; user_role: string; userName?: string; userRole?: string; action: string; details: string | null; createdAt: string }) => (
                 <tr key={log.id} className="border-b border-outline-variant/5 hover:bg-surface-container-lowest transition-colors">
                   <td className="p-4 text-xs text-outline font-mono whitespace-nowrap">
-                    {new Date(log.createdAt).toLocaleString('vi-VN')}
+                    {formatLogTime(log.createdAt)}
                   </td>
                   <td className="p-4">
                     <div className="flex items-center gap-2">
@@ -96,7 +97,7 @@ export default function AdminLogsPage() {
                       {ACTION_LABELS[log.action] || log.action}
                     </span>
                   </td>
-                  <td className="p-4 text-xs text-outline max-w-xs truncate" title={log.details}>
+                  <td className="p-4 text-xs text-outline max-w-xs truncate" title={log.details ?? undefined}>
                     {log.details || '—'}
                   </td>
                 </tr>

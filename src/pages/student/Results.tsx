@@ -1,25 +1,15 @@
 import { useState } from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
-
-function formatDate(value: string | undefined): string {
-  if (!value) return '--/--/----';
-  try {
-    const d = new Date(value);
-    return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-  } catch {
-    return '--/--/----';
-  }
-}
+import { fetcher, formatDate } from '../../lib/fetcher';
+import type { Submission } from '../../types/api';
 
 export default function StudentResultsPage() {
   const [tab, setTab] = useState<"exercise" | "exam">("exercise");
   const [expanded, setExpanded] = useState<number | null>(0);
 
-  const { data: RESULTS = [], isLoading } = useSWR('/api/submissions', fetcher);
+  const { data: RESULTS = [], isLoading } = useSWR<Submission[]>('/api/submissions', fetcher);
 
-  const filtered = RESULTS.filter((r: any) => (r.type || "exercise") === tab);
+  const filtered = RESULTS.filter((r) => (r.type || "exercise") === tab);
 
   return (
     <div className="pt-12 px-12 pb-20 max-w-7xl mx-auto page-enter">
@@ -68,7 +58,7 @@ export default function StudentResultsPage() {
           <div className="text-center py-10 text-on-surface-variant font-medium">Đang tải dữ liệu...</div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-10 text-on-surface-variant font-medium">Chưa có kết quả nào.</div>
-        ) : filtered.map((r: any, i: number) => {
+        ) : filtered.map((r, i) => {
           const aiScore = r.aiScore ?? 0;
           const teacherScore = r.teacherScore ?? 0;
           const title = r.title || "Không có tiêu đề";

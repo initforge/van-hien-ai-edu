@@ -3,13 +3,14 @@ import useSWR from 'swr';
 
 type Tab = "exercise" | "exam";
 
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
+import { fetcher } from '../../lib/fetcher';
 
 export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { data: apiExams = [], isLoading, mutate } = useSWR('/api/exams', fetcher);
+  const { data: apiExamsData, isLoading, mutate } = useSWR('/api/exams', fetcher);
+  const apiExams = apiExamsData?.data ?? [];
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -163,7 +164,7 @@ export default function ExamBankPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {apiExams.filter(e => e.type === 'exercise').map(e => (
+                  {apiExams.filter((e: { type: string }) => e.type === 'exercise').map((e: { id: string; title: string; work?: string; cls?: string; genre?: string; status?: string; duration?: number }) => (
                     <tr key={e.id} className="hover:bg-surface-container-low/30 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="font-headline font-bold text-primary group-hover:text-secondary transition-colors">{e.title}</div>
@@ -190,7 +191,7 @@ export default function ExamBankPage() {
                 </tbody>
               </table>
               <div className="px-6 py-4 bg-surface-container-low/20 flex justify-between items-center border-t border-outline-variant/10">
-                <span className="text-xs text-slate-500 font-medium">Hiển thị {apiExams.filter(e => e.type === 'exercise').length} / 128 bài tập</span>
+                <span className="text-xs text-slate-500 font-medium">Hiển thị {apiExams.filter((e: { type: string }) => e.type === 'exercise').length} / 128 bài tập</span>
                 <div className="flex gap-2">
                   <button className="p-1 rounded hover:bg-white transition-colors text-slate-400"><span className="material-symbols-outlined">chevron_left</span></button>
                   <button className="p-1 rounded hover:bg-white transition-colors text-slate-700"><span className="material-symbols-outlined">chevron_right</span></button>
@@ -214,25 +215,25 @@ export default function ExamBankPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/10">
-                  {apiExams.filter(e => e.type === 'exam').map(e => (
+                  {apiExams.filter((e: { type: string }) => e.type === 'exam').map((e: { id: string; title: string; status?: string; duration?: number; classId?: string }) => (
                     <tr key={e.id} className="hover:bg-surface-container-low/30 transition-colors group">
                       <td className="px-6 py-5">
                         <div className="font-headline font-bold text-primary group-hover:text-secondary transition-colors">{e.title}</div>
-                        <div className="text-xs text-slate-400 font-body mt-0.5 italic">Tác phẩm: {e.work}</div>
+                        <div className="text-xs text-slate-400 font-body mt-0.5 italic">Lớp: {e.classId || '—'}</div>
                       </td>
-                      <td className="px-6 py-5 text-sm text-on-surface font-medium">{e.cls}</td>
-                      <td className="px-6 py-5 text-sm text-slate-600">{e.duration}</td>
-                      <td className="px-6 py-5 text-center text-sm font-mono font-bold text-primary">{e.questions}</td>
+                      <td className="px-6 py-5 text-sm text-on-surface font-medium">{e.classId || '—'}</td>
+                      <td className="px-6 py-5 text-sm text-slate-600">{e.duration ?? '—'}</td>
+                      <td className="px-6 py-5 text-center text-sm font-mono font-bold text-primary">—</td>
                       <td className="px-6 py-5">
-                        <div className={`flex items-center gap-1.5 text-sm font-medium ${e.status === "approved" ? "text-secondary" : "text-amber-600"}`}>
-                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{e.status === "approved" ? "check_circle" : "pending"}</span>
-                          {e.status === "approved" ? "Đã duyệt" : "Chờ duyệt"}
+                        <div className={`flex items-center gap-1.5 text-sm font-medium ${e.status === "published" ? "text-secondary" : "text-amber-600"}`}>
+                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>{e.status === "published" ? "check_circle" : "pending"}</span>
+                          {e.status === "published" ? "Đã đăng" : "Nháp"}
                         </div>
                       </td>
                       <td className="px-6 py-5 text-right">
                         <div className="flex justify-end gap-3 text-sm font-medium">
                           <button className="text-primary hover:text-secondary transition-colors underline decoration-outline-variant/50 underline-offset-4">Xem</button>
-                          <button className="text-primary hover:text-secondary transition-colors underline decoration-outline-variant/50 underline-offset-4">{e.status === "pending" ? "Duyệt" : "Sửa"}</button>
+                          <button className="text-primary hover:text-secondary transition-colors underline decoration-outline-variant/50 underline-offset-4">{e.status === "draft" ? "Đăng" : "Sửa"}</button>
                         </div>
                       </td>
                     </tr>
@@ -240,7 +241,7 @@ export default function ExamBankPage() {
                 </tbody>
               </table>
               <div className="px-6 py-4 bg-surface-container-low/20 flex justify-between items-center border-t border-outline-variant/10">
-                <span className="text-xs text-slate-500 font-medium">Hiển thị {apiExams.filter(e => e.type === 'exam').length} / 45 đề thi</span>
+                <span className="text-xs text-slate-500 font-medium">Hiển thị {apiExams.filter((e: { type: string }) => e.type === 'exam').length} / 45 đề thi</span>
                 <div className="flex gap-2">
                   <button className="p-1 rounded hover:bg-white transition-colors text-slate-400"><span className="material-symbols-outlined">chevron_left</span></button>
                   <button className="p-1 rounded hover:bg-white transition-colors text-slate-700"><span className="material-symbols-outlined">chevron_right</span></button>

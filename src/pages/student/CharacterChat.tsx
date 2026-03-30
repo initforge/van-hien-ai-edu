@@ -1,7 +1,7 @@
 import { useState } from "react";
 import useSWR from "swr";
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from "../../lib/fetcher";
+import type { Character } from "../../types/api";
 
 type Step = "select-work" | "select-character" | "chatting";
 interface Message { role: "user" | "ai"; text: string; time: string; }
@@ -17,7 +17,7 @@ export default function CharacterChatPage() {
   const [threadId, setThreadId] = useState<string | null>(null);
 
   const { data: charactersData, isLoading } = useSWR("/api/characters", fetcher);
-  const characters = (charactersData || []) as any[];
+  const characters: Character[] = (charactersData?.data ?? []) as Character[];
 
   const works: GroupedWork[] = (() => {
     const map = new Map<string, GroupedWork>();
@@ -63,7 +63,7 @@ export default function CharacterChatPage() {
       if (res.headers.has("X-Thread-Id")) {
         setThreadId(res.headers.get("X-Thread-Id")!);
       }
-    } catch (_) { /* non-critical */ }
+    } catch (_) { /* non-critical: thread creation optional */ }
     setStep("chatting");
   };
 

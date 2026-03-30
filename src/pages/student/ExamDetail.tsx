@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import useSWR from 'swr';
 import { useAuth } from '../../contexts/AuthContext';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any>);
+import { fetcher } from '../../lib/fetcher';
+import type { ExamDetail } from '../../types/api';
 
 // Hardcoded passage for fallback when no API data
 const FALLBACK_PASSAGE = [
@@ -32,10 +33,10 @@ export default function ExamDetailPage() {
   const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { data } = useSWR(examId ? `/api/exam-detail?id=${examId}` : null, fetcher);
+  const { data } = useSWR<ExamDetail>(examId ? `/api/exam-detail?id=${examId}` : null, fetcher);
 
   const exam = data?.exam;
-  const questions: any[] = data?.questions || [];
+  const questions = data?.questions ?? [];
 
   const totalSeconds = (exam?.duration || 45) * 60;
   const [elapsed, setElapsed] = useState(0);
@@ -51,12 +52,29 @@ export default function ExamDetailPage() {
   useEffect(() => {
     if (!examId) return;
     const saved: Record<string, string> = {};
-    try { Object.assign(saved, JSON.parse(localStorage.getItem(`exam-draft-${examId}`) || '{}')); } catch { /* ignore */ }
+    try { Object.assign(saved, JSON.parse(localStorage.getItem(`exam-draft-${examId}`) || '{}')); } catch { /* ignore localStorage parse error */ }
     Object.entries(saved).forEach(([id, val]) => {
       const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${id}"]`);
       if (el) el.value = val as string;
     });
   }, [examId, data]);
+
+  const handleAutoSubmit = useCallback(async () => {
+    if (!user || !examId) return;
+    setIsSubmitting(true);
+    const ans: Record<string, string> = {};
+    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
+      ans[el.dataset.answerId || el.id] = el.value;
+    });
+    try {
+      await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ examId, answers: ans })
+      });
+    } catch (e) { console.error('Auto-submit failed:', e); }
+    navigate('/student/results');
+  }, [user, examId, navigate]);
 
   // Timer tick
   useEffect(() => {
@@ -72,8 +90,7 @@ export default function ExamDetailPage() {
       });
     }, 1000);
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [examId, totalSeconds]);
+  }, [examId, totalSeconds, handleAutoSubmit]);
 
   // Auto-save every 5 seconds
   useEffect(() => {
@@ -89,23 +106,6 @@ export default function ExamDetailPage() {
     }, 5000);
     return () => { if (autoSaveTimer.current) clearInterval(autoSaveTimer.current); };
   }, [examId]);
-
-  const handleAutoSubmit = useCallback(async () => {
-    if (!user || !examId) return;
-    setIsSubmitting(true);
-    const ans: Record<string, string> = {};
-    document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
-      ans[el.dataset.answerId || el.id] = el.value;
-    });
-    try {
-      await fetch('/api/submissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ examId, answers: ans })
-      });
-    } catch { /* ignore timeout */ }
-    navigate('/student/results');
-  }, [user, examId, navigate]);
 
   const handleSubmit = async () => {
     if (!user) {
@@ -139,7 +139,7 @@ export default function ExamDetailPage() {
   const totalQuestions = questions.length > 0 ? questions.length : 5; // fallback count for hardcoded
   const answeredCount = (() => {
     if (questions.length > 0) {
-      return questions.filter((q: any) => {
+      return questions.filter((q) => {
         const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${q.id}"]`);
         return el && el.value.trim().length > 0;
       }).length;
@@ -216,7 +216,7 @@ export default function ExamDetailPage() {
           <div className="space-y-10 py-4">
             <div className="space-y-8">
               {questions.length > 0 ? (
-                questions.map((q: any) => (
+                questions.map((q: { id: string; order_index: number; type: string; content: string; points: number }) => (
                   <div key={q.id} className="group">
                     <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">
                       Câu {q.order_index} ({q.points || 0} điểm)

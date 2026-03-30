@@ -1,16 +1,24 @@
 import { cachedJson } from './_cache.js';
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ env, data, request }) {
   try {
     const user = data?.user;
-    if (!user || user.role !== 'student') return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    if (!user || user.role !== 'student') return cachedJson({ error: 'Unauthorized' }, { status: 401, profile: 'nocache' });
 
-    const result = await env.DB.prepare(
-      "SELECT s.id, s.work_id AS workId, s.branch_point AS branchPoint, s.created_at AS createdAt, w.title AS workTitle FROM storylines s LEFT JOIN works w ON s.work_id = w.id WHERE s.student_id = ? ORDER BY s.created_at DESC"
-    ).bind(user.id).all();
-    return cachedJson(result.results || [], { profile: 'dynamic' });
+    const url = new URL(request.url);
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
+    const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
+
+    const [rowsResult, countResult] = await Promise.all([
+      env.DB.prepare(
+        "SELECT s.id, s.work_id AS workId, s.branch_point AS branchPoint, s.created_at AS createdAt, w.title AS workTitle FROM storylines s LEFT JOIN works w ON s.work_id = w.id WHERE s.student_id = ? ORDER BY s.created_at DESC LIMIT ? OFFSET ?"
+      ).bind(user.id, limit, offset).all(),
+      env.DB.prepare("SELECT COUNT(*) AS total FROM storylines WHERE student_id = ?").bind(user.id).first(),
+    ]);
+    return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
   } catch (e) {
-    return cachedJson([], { profile: 'dynamic' });
+    console.error('storylines GET error:', e);
+    return cachedJson({ error: 'Lỗi khi tải storylines.' }, { status: 500, profile: 'nocache' });
   }
 }
 
@@ -27,8 +35,9 @@ export async function onRequestPost({ request, env, data }) {
       "INSERT INTO storylines (id, work_id, student_id, branch_point, created_at) VALUES (?, ?, ?, ?, ?)"
     ).bind(id, body.workId, user.id, body.branchPoint, now).run();
 
-    return cachedJson({ id, workId: body.workId, branchPoint: body.branchPoint, createdAt: now }, { profile: 'nocache' });
+    return cachedJson({ id, workId: body.workId, branchPoint: body.branchPoint, createdAt: now }, { status: 201, profile: 'nocache' });
   } catch (e) {
-    return cachedJson({ error: 'Failed to create storyline', details: String(e) }, { status: 500, profile: 'nocache' });
+    console.error('storylines POST error:', e);
+    return cachedJson({ error: 'Lỗi khi tạo storyline. Vui lòng thử lại.' }, { status: 500, profile: 'nocache' });
   }
 }

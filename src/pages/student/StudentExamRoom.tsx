@@ -1,16 +1,14 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-
 import useSWR from 'swr';
+import { fetcher } from '../../lib/fetcher';
+import type { Exam, Submission } from '../../types/api';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
-
-// Safe field extractors based on /api/exams schema: { id, title, type, duration, status, deadline, createdAt }
-function examDescription(exam: any): string {
+function examDescription(exam: Exam): string {
   return exam.type === 'exercise' ? 'Bài tập văn học' : 'Đề thi';
 }
 
-function examDeadline(exam: any): string {
+function examDeadline(exam: Exam): string {
   if (!exam.deadline) return 'Không có hạn';
   try {
     const d = new Date(exam.deadline);
@@ -20,30 +18,35 @@ function examDeadline(exam: any): string {
   }
 }
 
-type ExamFilter = "all" | "exercise" | "exam";
+type ExamFilter = 'all' | 'exercise' | 'exam';
+type StatusFilter = 'all' | 'pending' | 'completed';
 
 export default function ExamRoomPage() {
-  const { data, isLoading } = useSWR('/api/exams', fetcher);
+  const { data, isLoading } = useSWR<Exam[]>('/api/exams', fetcher);
+  const { data: submissions } = useSWR<Submission[]>('/api/submissions', fetcher);
 
-  // Fetch student's submissions to know which exams are already submitted
-  const { data: submissions } = useSWR('/api/submissions', fetcher);
-
-  const EXAM_ROOMS = data || [];
+  const EXAM_ROOMS: Exam[] = data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [filter, setFilter] = useState<ExamFilter>("all");
+  const [filter, setFilter] = useState<ExamFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
-  // Build set of submitted examIds
   const submittedIds = React.useMemo(() => {
     const ids = new Set<string>();
-    if (Array.isArray(submissions)) {
-      submissions.forEach((s: any) => { if (s.examId) ids.add(s.examId); });
-    }
+    submissions?.forEach(s => { if (s.examId) ids.add(s.examId); });
     return ids;
   }, [submissions]);
 
   const selected = EXAM_ROOMS.find((e) => e.id === selectedId);
-  const filtered = EXAM_ROOMS.filter((e) => filter === "all" || e.type === filter);
+  const filtered = EXAM_ROOMS.filter((e) => {
+    const matchType = filter === 'all' || e.type === filter;
+    const submitted = submittedIds.has(e.id);
+    const matchStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'pending' && !submitted) ||
+      (statusFilter === 'completed' && submitted);
+    return matchType && matchStatus;
+  });
 
   const isExamSubmitted = (examId: string) => submittedIds.has(examId);
 
@@ -57,18 +60,31 @@ export default function ExamRoomPage() {
       </header>
 
       {/* Filter Bar */}
-      <div className="flex gap-2 mb-8">
-        {(["all", "exercise", "exam"] as ExamFilter[]).map((f) => (
+      <div className="flex flex-wrap gap-2 mb-8">
+        {(['all', 'exercise', 'exam'] as ExamFilter[]).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
             className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
               filter === f
-                ? "bg-primary text-white shadow-md"
-                : "bg-white text-slate-500 border border-outline-variant/30 hover:bg-primary/5 hover:text-primary"
+                ? 'bg-primary text-white shadow-md'
+                : 'bg-white text-slate-500 border border-outline-variant/30 hover:bg-primary/5 hover:text-primary'
             }`}
           >
-            {f === "all" ? "Tất cả" : f === "exercise" ? "Bài tập" : "Đề thi"}
+            {f === 'all' ? 'Tất cả' : f === 'exercise' ? 'Bài tập' : 'Đề thi'}
+          </button>
+        ))}
+        {(['pending', 'completed'] as StatusFilter[]).map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-5 py-2 rounded-full text-sm font-bold transition-all ${
+              statusFilter === s
+                ? 'bg-secondary text-white shadow-md'
+                : 'bg-white text-slate-500 border border-outline-variant/30 hover:bg-secondary/5 hover:text-secondary'
+            }`}
+          >
+            {s === 'pending' ? 'Chưa làm' : 'Đã hoàn thành'}
           </button>
         ))}
       </div>
@@ -87,17 +103,17 @@ export default function ExamRoomPage() {
               onClick={() => { setSelectedId(exam.id); setShowConfirm(false); }}
               className={`bg-white/80 backdrop-blur-md rounded-2xl p-6 border-[0.5px] cursor-pointer transition-all duration-300 flex flex-col hover:-translate-y-1 hover:shadow-lg ${
                 selectedId === exam.id
-                  ? "border-primary shadow-lg shadow-primary/10 ring-2 ring-primary/20"
-                  : "border-outline-variant/30 hover:border-primary/40"
-              } ${submitted ? "opacity-70" : ""}`}
+                  ? 'border-primary shadow-lg shadow-primary/10 ring-2 ring-primary/20'
+                  : 'border-outline-variant/30 hover:border-primary/40'
+              } ${submitted ? 'opacity-70' : ''}`}
             >
               <div className="flex justify-between items-start mb-4">
                 <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full ${
                   submitted
-                    ? "bg-slate-100 text-slate-500"
-                    : "bg-secondary/10 text-secondary"
+                    ? 'bg-slate-100 text-slate-500'
+                    : 'bg-secondary/10 text-secondary'
                 }`}>
-                  {submitted ? "Đã hoàn thành" : "Sẵn sàng"}
+                  {submitted ? 'Đã hoàn thành' : 'Sẵn sàng'}
                 </span>
                 <span className="text-xs text-outline font-medium">{exam.duration} phút</span>
               </div>
@@ -114,7 +130,7 @@ export default function ExamRoomPage() {
               <div className="flex justify-between items-center pt-4 border-t border-outline-variant/10">
                 <div className="flex items-center gap-2 text-xs text-outline">
                   <span className="material-symbols-outlined text-sm">quiz</span>
-                  {"—"} câu hỏi
+                  {'—'} câu hỏi
                 </div>
                 <div className="flex items-center gap-2 text-xs text-outline">
                   <span className="material-symbols-outlined text-sm">event</span>
@@ -148,12 +164,12 @@ export default function ExamRoomPage() {
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">quiz</span>
               <p className="text-xs text-outline uppercase font-bold tracking-wider">Câu hỏi</p>
-              <p className="font-bold text-primary">{"—"}</p>
+              <p className="font-bold text-primary">{'—'}</p>
             </div>
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">signal_cellular_alt</span>
               <p className="text-xs text-outline uppercase font-bold tracking-wider">Độ khó</p>
-              <p className="font-bold text-primary">{"—"}</p>
+              <p className="font-bold text-primary">{'—'}</p>
             </div>
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">menu_book</span>

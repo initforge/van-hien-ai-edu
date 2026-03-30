@@ -1,7 +1,12 @@
 import { jwtVerify } from 'jose';
+import { isTokenRevoked } from './_kv.js';
 
 // JWT_SECRET must be set via: wrangler secret put JWT_SECRET
 // Never hardcode secrets in production
+
+// Password hashing constants (match database/seed/008-passwords.sql)
+export const HASH_ROUNDS = 100000;
+export const HASH_KEY_LEN = 64;
 
 // Middleware that runs before /api/* handlers
 export async function onRequest(context) {
@@ -35,6 +40,14 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ error: "Server misconfigured" }), { status: 500 });
     }
     const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
+
+    // Check if token has been revoked (logout)
+    if (payload.jti && env.CACHE) {
+      const revoked = await isTokenRevoked(env.CACHE, payload.jti);
+      if (revoked) {
+        return new Response(JSON.stringify({ error: "Token has been revoked" }), { status: 401 });
+      }
+    }
 
     // Attach user payload to context data so downstream API can use it
     data.user = payload;

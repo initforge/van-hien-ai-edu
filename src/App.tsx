@@ -1,6 +1,7 @@
 import React, { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "./contexts/AuthContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Layouts
 import StudentLayout from "./components/layout/StudentLayout";
@@ -9,7 +10,6 @@ import TeacherLayout from "./components/layout/TeacherLayout";
 // Pages (lazy-loaded for code splitting)
 const Homepage = lazy(() => import("./pages/Homepage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const ExamRoomPage = lazy(() => import("./pages/ExamRoomPage"));
 
 // Student
 const StudentDashboard = lazy(() => import("./pages/student/StudentDashboard"));
@@ -50,6 +50,7 @@ function LoadingFallback() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <Suspense fallback={<LoadingFallback />}>
       <Routes>
         {/* Public */}
@@ -108,5 +109,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "./sidebarUtils";
 
 const NAV_ITEMS = [
   { name: "Tổng quan", href: "/admin/dashboard", icon: "dashboard" },
@@ -22,7 +22,7 @@ export function AdminSidebar() {
         </div>
         <nav className="space-y-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <Link
                 key={item.href}

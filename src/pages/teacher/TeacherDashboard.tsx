@@ -1,12 +1,11 @@
 ﻿import React from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from '../../lib/fetcher';
+import type { TeacherStats } from '../../types/api';
 
 export default function TeacherDashboardPage() {
-  const { data } = useSWR('/api/stats', fetcher);
-  // API returns: studentCount, pendingGrading, totalExams, aiPending
-  const stats = (data as any) || { studentCount: 0, pendingGrading: 0, totalExams: 0, aiPending: 0 };
+  const { data } = useSWR<TeacherStats>('/api/stats', fetcher);
+  const stats = data ?? { studentCount: 0, pendingGrading: 0, totalExams: 0, aiPending: 0 };
 
   return (
     <>

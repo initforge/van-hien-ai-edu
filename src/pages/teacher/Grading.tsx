@@ -3,8 +3,9 @@ import { useState } from 'react';
 import useSWR from 'swr';
 import { RUBRIC_DEFAULT } from '../../constants/grading';
 import type { RubricRow } from '../../constants/grading';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
+import { fetcher } from '../../lib/fetcher';
+import type { Submission, Class, Exam } from '../../types/api';
+import { SUBMISSION_STATUS } from '../../lib/utils';
 
 type Step = "class" | "exam" | "student" | "grading";
 
@@ -18,9 +19,13 @@ export default function GradingPage() {
   const [rubricScores, setRubricScores] = useState<RubricRow[]>(RUBRIC_DEFAULT);
   const [teacherComment, setTeacherComment] = useState("");
 
-  const { data: CLASSES = [] } = useSWR('/api/classes', fetcher);
-  const { data: EXAMS = [] } = useSWR('/api/exams', fetcher);
-  const { data: SUBMISSIONS = [], mutate: mutateSubmissions } = useSWR('/api/submissions', fetcher);
+  const { data: classesData } = useSWR('/api/classes', fetcher);
+  const { data: examsData } = useSWR('/api/exams', fetcher);
+  const { data: submissionsData, mutate: mutateSubmissions } = useSWR('/api/submissions', fetcher);
+
+  const CLASSES: Class[] = classesData?.data ?? [];
+  const EXAMS: Exam[] = examsData?.data ?? [];
+  const SUBMISSIONS: Submission[] = submissionsData?.data ?? [];
   const { data: essayData } = useSWR(
     selectedStudent ? `/api/answers?submissionId=${selectedStudent}` : null,
     fetcher
@@ -56,9 +61,9 @@ export default function GradingPage() {
     }
   };
 
-  const exams = selectedClass ? EXAMS.filter((e: any) => e.classId === selectedClass) : [];
-  const students = selectedExam ? SUBMISSIONS.filter((s: any) => s.examId === selectedExam) : [];
-  const student = students.find((s: any) => s.id === selectedStudent);
+  const exams = selectedClass ? EXAMS.filter((e) => e.classId != null && e.classId === selectedClass) : [];
+  const students = selectedExam ? SUBMISSIONS.filter((s) => s.examId === selectedExam) : [];
+  const student = students.find((s) => s.id === selectedStudent);
 
   return (
     <div className="max-w-7xl mx-auto pb-12 page-enter">
@@ -103,11 +108,11 @@ export default function GradingPage() {
               >
                 <h3 className="font-headline text-2xl font-bold text-primary mb-3 group-hover:text-secondary transition-colors">{c.name}</h3>
                 <div className="flex justify-between text-sm text-slate-500 mb-4">
-                  <span>{c.students} học sinh</span>
-                  {c.pendingExams > 0 && <span className="text-tertiary font-bold">{c.pendingExams} đề chờ chấm</span>}
+                  <span>{c.students ?? 0} học sinh</span>
+                  {(c.pendingExams ?? 0) > 0 && <span className="text-tertiary font-bold">{c.pendingExams} đề chờ chấm</span>}
                 </div>
                 <div className="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
-                  <div className="h-full bg-secondary rounded-full transition-all" style={{ width: c.pendingExams === 0 ? "100%" : `${100 - c.pendingExams * 20}%` }}></div>
+                  <div className="h-full bg-secondary rounded-full transition-all" style={{ width: (c.pendingExams ?? 0) === 0 ? "100%" : `${100 - (c.pendingExams ?? 0) * 20}%` }}></div>
                 </div>
               </div>
             ))}
@@ -140,15 +145,15 @@ export default function GradingPage() {
                   className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border-[0.5px] border-outline-variant/30 cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all group"
                 >
                   <div className="flex justify-between items-start mb-4">
-                    <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${e.graded === e.total ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-                      {e.graded === e.total ? "Đã chấm xong" : `${e.graded}/${e.total} đã chấm`}
+                    <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${(e.graded ?? 0) === (e.total ?? 0) ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                      {(e.graded ?? 0) === (e.total ?? 0) ? "Đã chấm xong" : `${e.graded ?? 0}/${e.total ?? 0} đã chấm`}
                     </span>
                     <span className="text-xs text-outline">{e.date}</span>
                   </div>
                   <h3 className="font-headline text-xl font-bold text-primary mb-1 group-hover:text-secondary transition-colors">{e.title}</h3>
                   <p className="text-sm text-slate-500 italic">{e.subject}</p>
                   <div className="mt-4 w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
-                    <div className="h-full bg-secondary rounded-full" style={{ width: `${(e.graded / e.total) * 100}%` }}></div>
+                    <div className="h-full bg-secondary rounded-full" style={{ width: `${((e.graded ?? 0) / (e.total ?? 1)) * 100}%` }}></div>
                   </div>
                 </div>
               ))}
@@ -172,13 +177,13 @@ export default function GradingPage() {
           <div className="flex gap-4 mb-8 text-sm">
             <button className="px-4 py-2 bg-primary text-white rounded-full font-bold">Tất cả ({students.length})</button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              Chờ chấm ({students.filter(s => s.status === "pending").length})
+              Chờ chấm ({students.filter(s => s.status === SUBMISSION_STATUS.PENDING).length})
             </button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              AI đã chấm ({students.filter(s => s.status === "ai_graded").length})
+              AI đã chấm ({students.filter(s => s.status === SUBMISSION_STATUS.AI_GRADED).length})
             </button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              Đã trả ({students.filter(s => s.status === "returned").length})
+              Đã trả ({students.filter(s => s.status === SUBMISSION_STATUS.RETURNED).length})
             </button>
           </div>
 

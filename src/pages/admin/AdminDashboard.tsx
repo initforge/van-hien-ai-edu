@@ -1,23 +1,20 @@
 import React from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from '../../lib/fetcher';
+import type { AdminStats } from '../../types/api';
 
 export default function AdminDashboardPage() {
-  const { data, isLoading } = useSWR('/api/admin/stats', fetcher);
+  const { data, isLoading } = useSWR<AdminStats>('/api/admin/stats', fetcher);
 
-  const counts = data?.counts || {
-    total: 0, teachers: 0, students: 0,
-    classes: 0, exams: 0, submissions: 0
-  };
-  const monthlyUsers = data?.monthlyUsers || [];
-  const monthlySubmissions = data?.monthlySubmissions || [];
-  const topTeachers = data?.topTeachers || [];
+  const counts = data?.counts ?? { total: 0, teachers: 0, students: 0, classes: 0, exams: 0, submissions: 0 };
+  const monthlyUsers: { month: string; count: number }[] = data?.monthlyUsers ?? [];
+  const monthlySubmissions: { month: string; count: number }[] = data?.monthlySubmissions ?? [];
+  const topTeachers: { id: string; name: string; examCount: number }[] = data?.topTeachers ?? [];
 
   // Build chart data
-  const months = monthlyUsers.map((m: any) => m.month);
-  const userData = monthlyUsers.map((m: any) => m.count);
-  const subData = monthlySubmissions.map((m: any) => m.count);
+  const months = monthlyUsers.map(m => m.month);
+  const userData = monthlyUsers.map(m => m.count);
+  const subData = monthlySubmissions.map(m => m.count);
 
   return (
     <>
@@ -31,9 +28,9 @@ export default function AdminDashboardPage() {
         <StatCard label="Tổng Users" value={counts.total} icon="group" color="primary" />
         <StatCard label="Giáo viên" value={counts.teachers} icon="school" color="secondary" />
         <StatCard label="Học sinh" value={counts.students} icon="person" color="tertiary" />
-        <StatCard label="Lớp học" value={counts.classes} icon="class" color="primary" />
-        <StatCard label="Bài thi" value={counts.exams} icon="quiz" color="secondary" />
-        <StatCard label="Bài nộp" value={counts.submissions} icon="upload" color="tertiary" />
+        <StatCard label="Lớp học" value={counts.classes ?? 0} icon="class" color="primary" />
+        <StatCard label="Bài thi" value={counts.exams ?? 0} icon="quiz" color="secondary" />
+        <StatCard label="Bài nộp" value={counts.submissions ?? 0} icon="upload" color="tertiary" />
       </div>
 
       {/* Charts Row */}
@@ -66,7 +63,7 @@ export default function AdminDashboardPage() {
           <p className="text-outline text-sm">Chưa có dữ liệu</p>
         ) : (
           <div className="space-y-3">
-            {topTeachers.map((t: any, i: number) => (
+            {topTeachers.map((t, i) => (
               <div key={t.id} className="flex items-center gap-4 p-3 bg-surface-container-lowest rounded-xl">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
                   i === 0 ? 'bg-[#C9A84C]' : i === 1 ? 'bg-[#326286]/70' : 'bg-[#326286]/40'

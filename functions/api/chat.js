@@ -10,10 +10,34 @@ export async function onRequestPost({ request, data, env }) {
     const { messages, characterId, threadId } = await request.json();
     const lastUserMessage = messages?.[messages.length - 1]?.text || '';
 
-    // Rate limit: 10 messages/min per user
-    const limit = checkRateLimit(user.id, 10);
+    // Rate limit: 10 messages/min per user (KV-backed, no in-memory fallback)
+    const limit = await checkRateLimit(user.id, 10, env);
     if (!limit.allowed) {
       return jsonError(`Quá nhiều tin nhắn. Thử lại sau ${Math.ceil(limit.resetIn / 1000)}s.`, 429);
+    }
+
+    // ── characterId allowlist ─────────────────────────────────
+    // Students: character must be active AND belong to an analyzed work
+    // Teachers: character must belong to their own account
+    if (characterId) {
+      const charRow = await env.DB.prepare(
+        `SELECT c.id FROM characters c
+         JOIN works w ON c.work_id = w.id
+         WHERE c.name = ? AND c.active = 1 AND w.status = 'analyzed'
+         LIMIT 1`
+      ).bind(characterId).first();
+
+      const isTeacherChar = await env.DB.prepare(
+        `SELECT id FROM characters WHERE name = ? AND teacher_id = ? LIMIT 1`
+      ).bind(characterId, user.id).first();
+
+      const isAuthorized = user.role === 'teacher'
+        ? isTeacherChar
+        : charRow;
+
+      if (!isAuthorized) {
+        return jsonError('Nhân vật không hợp lệ hoặc không khả dụng.', 403);
+      }
     }
 
     const now = new Date().toISOString();
@@ -49,33 +73,22 @@ export async function onRequestPost({ request, data, env }) {
           `Ta rất hiểu nỗi băn khoăn của bạn về vấn đề: "${lastUserMessage.slice(0, 80)}...". Trong nguyên tác, tác giả đã khắc hoạ những góc khuất trong tâm hồn con người để chúng ta chiêm nghiệm.`,
           `Tuy nhiên, đây chỉ là phiên bản MVP! Ở production, đoạn text này sẽ được sinh ra từ AI SDK hoặc GenMax.`
         ];
-        const words = responses.join(' ').split(' ');
+        const fullText = responses.join(' ');
+        const words = fullText.split(' ');
         const totalWords = words.length;
-        let wordIndex = 0;
 
-        for (const word of words) {
-          // Every 8 words, also persist a chunk to DB (accumulated)
-          if (wordIndex % 8 === 0 && wordIndex > 0) {
-            const chunk = words.slice(wordIndex - 8, wordIndex).join(' ');
-            try {
-              await env.DB.prepare(
-                "INSERT INTO chat_messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
-              ).bind(crypto.randomUUID(), threadIdToUse, 'ai', chunk, new Date().toISOString()).run();
-            } catch (_) { /* best-effort */ }
-          }
-
-          controller.enqueue(encoder.encode(word + ' '));
+        for (let i = 0; i < words.length; i++) {
+          controller.enqueue(encoder.encode(words[i] + ' '));
           await new Promise(r => setTimeout(r, 40));
-          wordIndex++;
         }
 
-        // Final flush
+        // Flush full AI response to DB after stream completes (no N+1)
+        const aiTimestamp = new Date().toISOString();
         try {
-          const finalChunk = words.slice(-8).join(' ');
           await env.DB.prepare(
             "INSERT INTO chat_messages (id, thread_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
-          ).bind(crypto.randomUUID(), threadIdToUse, 'ai', finalChunk, new Date().toISOString()).run();
-        } catch (_) { /* best-effort */ }
+          ).bind(crypto.randomUUID(), threadIdToUse, 'ai', fullText, aiTimestamp).run();
+        } catch (_) { /* best-effort: non-critical if DB write fails */ }
 
         controller.close();
       }

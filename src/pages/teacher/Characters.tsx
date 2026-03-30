@@ -1,29 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from '../../lib/fetcher';
+import { formatTimeAgo } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = "list" | "history";
 
 interface TeacherCharacter {
-  id: number;
+  id: string;
   name: string;
   initials: string;
   role: string;
   description: string;
   personality: string;
   systemPrompt: string;
-  active: boolean;
-  workId: number;
+  active?: boolean;
+  workId: string;
   workTitle: string;
-  chatCount: number;
+  chatCount?: number;
   createdAt: string;
 }
 
 interface ChatThread {
-  id: number;
+  id: string;
   character_name: string;
   created_at: string;
 }
@@ -32,20 +32,24 @@ interface ChatThread {
 
 export default function CharactersPage() {
   const [tab, setTab] = useState<Tab>("list");
-  const [selectedCharId, setSelectedCharId] = useState<number | null>(null);
+  const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [showPromptGuide, setShowPromptGuide] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
 
   // ── API data ────────────────────────────────────────────────────────────────
-  const { data: characters = [], isLoading, mutate } = useSWR<TeacherCharacter[]>('/api/characters', fetcher);
-  const { data: chatThreads = [] } = useSWR<ChatThread[]>('/api/chat', fetcher);
-  const { data: works = [] } = useSWR('/api/works', fetcher);
+  const { data: charactersData, isLoading, mutate } = useSWR('/api/characters', fetcher);
+  const { data: chatThreadsData } = useSWR('/api/chat', fetcher);
+  const { data: worksData } = useSWR('/api/works', fetcher);
+
+  const characters: TeacherCharacter[] = charactersData?.data ?? [];
+  const chatThreads: ChatThread[] = chatThreadsData?.threads ?? [];
+  const works = worksData?.data ?? [];
 
   const selectedChar = characters.find(c => c.id === selectedCharId) ?? null;
 
   // ── Config panel form state ─────────────────────────────────────────────────
   const [editForm, setEditForm] = useState<Partial<TeacherCharacter>>({});
-  React.useEffect(() => {
+  useEffect(() => {
     if (selectedChar) setEditForm(selectedChar);
     else setEditForm({});
   }, [selectedChar]);
@@ -155,7 +159,7 @@ export default function CharactersPage() {
               <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm *</label>
               <select name="workId" required className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary">
                 <option value="">-- Chọn tác phẩm --</option>
-                {(works as any[]).map(w => (
+                {(worksData?.data ?? []).map((w: { id: string; title: string }) => (
                   <option key={w.id} value={w.id}>{w.title}</option>
                 ))}
               </select>
@@ -370,7 +374,7 @@ export default function CharactersPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 flex-shrink-0">
-                  <span className="text-xs text-slate-400">{formatTime(thread.created_at)}</span>
+                  <span className="text-xs text-slate-400">{formatTimeAgo(thread.created_at)}</span>
                   <span className="material-symbols-outlined text-outline group-hover:text-primary transition-colors">chevron_right</span>
                 </div>
               </div>

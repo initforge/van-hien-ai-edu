@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
-
-const ROLES = ['student', 'teacher', 'admin'];
+import { fetcher } from '../../lib/fetcher';
+import type { User } from '../../types/api';
 
 export default function AdminUsersPage() {
-  const { data, mutate, error } = useSWR('/api/admin/users', fetcher);
+  const { data: usersData, mutate, error } = useSWR('/api/admin/users', fetcher);
+  const users: User[] = usersData?.data ?? [];
   const [showModal, setShowModal] = useState(false);
-  const [editUser, setEditUser] = useState<any>(null);
+  const [editUser, setEditUser] = useState<User | null>(null);
   const [form, setForm] = useState({ name: '', email: '', username: '', role: 'student' });
   const [saving, setSaving] = useState(false);
-
-  const users = data ?? [];
+  const [submitError, setSubmitError] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const openCreate = () => {
     setEditUser(null);
@@ -20,7 +20,7 @@ export default function AdminUsersPage() {
     setShowModal(true);
   };
 
-  const openEdit = (u: any) => {
+  const openEdit = (u: User) => {
     setEditUser(u);
     setForm({ name: u.name, email: u.email, username: u.username || '', role: u.role });
     setShowModal(true);
@@ -28,13 +28,13 @@ export default function AdminUsersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError('');
     setSaving(true);
     try {
-      const url = editUser ? '/api/admin/users' : '/api/admin/users';
       const method = editUser ? 'PUT' : 'POST';
       const body = editUser ? { ...form, id: editUser.id } : form;
 
-      const res = await fetch(url, {
+      const res = await fetch('/api/admin/users', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -44,17 +44,28 @@ export default function AdminUsersPage() {
         setShowModal(false);
         mutate();
       } else {
-        alert('Thao tác thất bại');
+        const err = await res.json().catch(() => ({}));
+        setSubmitError(err.error || 'Thao tác thất bại. Vui lòng thử lại.');
       }
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Xóa người dùng này?')) return;
-    await fetch(`/api/admin/users?id=${id}`, { method: 'DELETE' });
-    mutate();
+  const handleDeleteRequest = (id: string) => {
+    setConfirmDeleteId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmDeleteId) return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/admin/users?id=${confirmDeleteId}`, { method: 'DELETE' });
+      mutate();
+    } finally {
+      setConfirmDeleteId(null);
+      setDeleting(false);
+    }
   };
 
   return (
@@ -76,7 +87,7 @@ export default function AdminUsersPage() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-4 mb-8">
         {(['teacher', 'student', 'admin'] as const).map(role => {
-          const count = users.filter((u: any) => u.role === role).length;
+          const count = users.filter(u => u.role === role).length;
           return (
             <div key={role} className="bg-white/60 border border-[#326286]/10 rounded-xl p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -112,7 +123,7 @@ export default function AdminUsersPage() {
             <tbody>
               {users.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-outline">Chưa có người dùng</td></tr>
-              ) : users.map((u: any) => (
+              ) : users.map(u => (
                 <tr key={u.id} className="border-b border-outline-variant/5 hover:bg-surface-container-lowest transition-colors">
                   <td className="p-4 font-semibold">{u.name}</td>
                   <td className="p-4 text-outline font-mono text-xs">{u.username || '—'}</td>
@@ -132,7 +143,7 @@ export default function AdminUsersPage() {
                       <button onClick={() => openEdit(u)} className="p-2 hover:bg-primary/10 rounded-lg transition-colors text-primary" title="Sửa">
                         <span className="material-symbols-outlined text-sm">edit</span>
                       </button>
-                      <button onClick={() => handleDelete(u.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400" title="Xóa">
+                      <button onClick={() => handleDeleteRequest(u.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400" title="Xóa">
                         <span className="material-symbols-outlined text-sm">delete</span>
                       </button>
                     </div>
@@ -152,6 +163,9 @@ export default function AdminUsersPage() {
               {editUser ? 'Sửa Người dùng' : 'Thêm Người dùng'}
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {submitError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{submitError}</div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Họ tên</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -171,7 +185,7 @@ export default function AdminUsersPage() {
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Vai trò</label>
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                   className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none">
-                  {ROLES.map(r => <option key={r} value={r}>{r === 'admin' ? 'Admin' : r === 'teacher' ? 'Giáo viên' : 'Học sinh'}</option>)}
+                  {(['student', 'teacher', 'admin'] as const).map(r => <option key={r} value={r}>{r === 'admin' ? 'Admin' : r === 'teacher' ? 'Giáo viên' : 'Học sinh'}</option>)}
                 </select>
               </div>
               <div className="flex gap-3 pt-2">
@@ -185,6 +199,26 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+            <h3 className="text-xl font-headline font-bold text-red-600 mb-2">Xác nhận xóa</h3>
+            <p className="text-sm text-slate-600 mb-6">Bạn có chắc muốn xóa người dùng này? Hành động này không thể hoàn tác.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeleteId(null)}
+                className="flex-1 border border-outline-variant/30 py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors">
+                Hủy
+              </button>
+              <button onClick={handleDeleteConfirm} disabled={deleting}
+                className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors disabled:opacity-50">
+                {deleting ? 'Đang xóa...' : 'Xóa'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,26 +1,29 @@
 import { useState } from 'react';
 import useSWR from 'swr';
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from '../../lib/fetcher';
+import type { Work, Character } from '../../types/api';
 
 export default function LibraryPage() {
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
 
-  const { data: works = [], isLoading, mutate } = useSWR('/api/works', fetcher);
-  const { data: characters = [] } = useSWR('/api/characters', fetcher);
+  const { data: worksData, isLoading, mutate } = useSWR('/api/works', fetcher);
+  const { data: charactersData } = useSWR('/api/characters', fetcher);
 
-  const filtered = works.filter((w: any) =>
+  const works: Work[] = worksData?.data ?? [];
+  const characters: Character[] = charactersData?.data ?? [];
+
+  const filtered = works.filter((w) =>
     w.title.toLowerCase().includes(search.toLowerCase()) ||
     w.author.toLowerCase().includes(search.toLowerCase())
   );
 
-  const work = works.find((w: any) => w.id === selected) ?? null;
+  const work = works.find((w) => w.id === String(selected)) ?? null;
 
   // Count active characters for a given workId
-  const charCountForWork = (workId: number) =>
-    (characters as any[]).filter((c: any) => c.workId === workId && c.active).length;
+  const charCountForWork = (workId: string) =>
+    characters.filter((c) => String(c.workId) === workId && c.active).length;
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -134,7 +137,7 @@ export default function LibraryPage() {
 
         {/* Cards Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
-          {filtered.map((w: any) => (
+          {filtered.map((w) => (
             <div
               key={w.id}
               onClick={() => setSelected(w.id)}

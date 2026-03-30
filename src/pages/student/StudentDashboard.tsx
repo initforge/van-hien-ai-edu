@@ -4,16 +4,16 @@ import { useState } from 'react';
 import useSWR from 'swr';
 import { useAuth } from '../../contexts/AuthContext';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json());
+import { fetcher } from '../../lib/fetcher';
+import type { StudentStats, UpcomingExam, RecentResult } from '../../types/api';
 
 export default function StudentDashboardPage() {
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
   const { user } = useAuth();
-  const { data } = useSWR('/api/stats', fetcher);
-  const statsData: any = data;
-  
-  const upcomingExams = statsData?.upcomingExams ?? [];
-  const recentResults = statsData?.recentResults ?? [];
+  const { data } = useSWR<StudentStats>('/api/stats', fetcher);
+
+  const upcomingExams: UpcomingExam[] = data?.upcomingExams ?? [];
+  const recentResults: RecentResult[] = data?.recentResults ?? [];
 
 
   return (
@@ -51,7 +51,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {upcomingExams.map((exam: any, index: number) => (
+            {upcomingExams.map((exam, index) => (
               <Link key={exam.id || index} to={`/student/exam-room/${exam.id}`} className="bg-white/80 backdrop-blur-md rounded-2xl border-[0.5px] border-outline-variant/30 p-6 flex flex-col h-full hover:shadow-lg transition-all duration-300 hover:-translate-y-1 group">
                 <div className="flex justify-between items-start mb-4">
                   <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${exam.type === 'exam' ? 'bg-tertiary/10 text-tertiary' : 'bg-primary/10 text-primary'}`}>
@@ -86,7 +86,7 @@ export default function StudentDashboardPage() {
           </div>
 
           <div className="space-y-4">
-            {recentResults.map((result: any, index: number) => (
+            {recentResults.map((result, index) => (
               <div 
                 key={result.submissionId || index}
                 onClick={() => setExpandedResult(expandedResult === index ? null : index)}

@@ -1,4 +1,5 @@
 ﻿import React, { useState } from 'react';
+import { FILL_SETTINGS } from '../../lib/utils';
 import {
   CLASS_STATS_CARDS,
   CLASS_STATS_BARS,
@@ -55,7 +56,7 @@ export default function TeacherAIReviewPage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {CLASS_STATS_CARDS.map((s, i) => (
               <div key={i} className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border-[0.5px] border-outline-variant/30">
-                <span className={`material-symbols-outlined ${s.color} text-3xl mb-3 block`} style={{ fontVariationSettings: "'FILL' 1" }}>{s.icon}</span>
+                <span className={`material-symbols-outlined ${s.color} text-3xl mb-3 block`} style={FILL_SETTINGS}>{s.icon}</span>
                 <p className="text-3xl font-headline font-bold text-primary mb-1">{s.value}</p>
                 <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">{s.label}</p>
               </div>

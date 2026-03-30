@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth, isActiveNav } from "./sidebarUtils";
 
 const NAV_ITEMS = [
   { name: "Tổng quan", href: "/student/dashboard", icon: "dashboard" },
@@ -24,7 +24,7 @@ export function StudentSidebar() {
 
       <nav className="flex-1 px-4 space-y-2">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          const isActive = isActiveNav(pathname, item.href);
           return (
             <Link
               key={item.href}
