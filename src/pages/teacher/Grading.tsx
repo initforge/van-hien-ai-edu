@@ -1,44 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+
 import useSWR from 'swr';
+import { RUBRIC_DEFAULT } from '../../constants/grading';
+import type { RubricRow } from '../../constants/grading';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
-
-/*
-const CLASSES = [
-  { id: "8a", name: "Lớp 8A", students: 35, pendingExams: 2 },
-  { id: "9b", name: "Lớp 9B", students: 32, pendingExams: 1 },
-  { id: "9c", name: "Lớp 9C", students: 30, pendingExams: 0 },
-];
-
-const EXAMS: Record<string, Array<{ id: string; title: string; subject: string; date: string; total: number; graded: number }>> = {
-  "8a": [
-    { id: "e1", title: "Phân tích nhân vật Lão Hạc", subject: "Lão Hạc — Nam Cao", date: "18/03/2026", total: 35, graded: 30 },
-    { id: "e2", title: "Tóm tắt Tắt đèn", subject: "Tắt đèn — Ngô Tất Tố", date: "10/03/2026", total: 35, graded: 35 },
-  ],
-  "9b": [
-    { id: "e3", title: "Cảm nhận bài thơ Đồng chí", subject: "Đồng chí — Chính Hữu", date: "15/03/2026", total: 32, graded: 20 },
-  ],
-  "9c": [],
-};
-
-const STUDENTS: Record<string, Array<{ id: string; name: string; score: number | null; status: string }>> = {
-  "e1": [
-    { id: "s1", name: "Nguyễn Thị Mai", score: 7.8, status: "ai_graded" },
-    { id: "s2", name: "Trần Văn Hào", score: 6.5, status: "ai_graded" },
-    { id: "s3", name: "Lê Minh Anh", score: null, status: "pending" },
-    { id: "s4", name: "Phạm Hương Giang", score: 8.2, status: "returned" },
-    { id: "s5", name: "Đỗ Quang Minh", score: null, status: "pending" },
-  ],
-  "e2": [
-    { id: "s6", name: "Nguyễn Thị Mai", score: 8.5, status: "returned" },
-    { id: "s7", name: "Trần Văn Hào", score: 7.0, status: "returned" },
-  ],
-  "e3": [
-    { id: "s8", name: "Vũ Thị Hồng", score: 7.5, status: "ai_graded" },
-    { id: "s9", name: "Bùi Đức Anh", score: null, status: "pending" },
-  ],
-};
-*/
 
 type Step = "class" | "exam" | "student" | "grading";
 
@@ -48,10 +14,21 @@ export default function GradingPage() {
   const [selectedExam, setSelectedExam] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
 
+  // Grading state
+  const [rubricScores, setRubricScores] = useState<RubricRow[]>(RUBRIC_DEFAULT);
+  const [teacherComment, setTeacherComment] = useState("");
+
   const { data: CLASSES = [] } = useSWR('/api/classes', fetcher);
   const { data: EXAMS = [] } = useSWR('/api/exams', fetcher);
   const { data: SUBMISSIONS = [], mutate: mutateSubmissions } = useSWR('/api/submissions', fetcher);
+  const { data: essayData } = useSWR(
+    selectedStudent ? `/api/answers?submissionId=${selectedStudent}` : null,
+    fetcher
+  ) as { data: { studentName: string; answers: { questionId: string; content: string }[] } | undefined };
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Calculate total from rubric scores
+  const teacherTotal = rubricScores.reduce((sum, r) => sum + (parseFloat(r.gvRef) || 0), 0);
 
   const goBack = () => {
     if (step === "grading") { setStep("student"); setSelectedStudent(null); }
@@ -62,18 +39,21 @@ export default function GradingPage() {
   const handleReturn = async () => {
     if (!selectedStudent) return;
     setIsSubmitting(true);
-    await fetch('/api/submissions', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: selectedStudent,
-        teacherScore: 8.5,
-        teacherComment: "Đã chấm xong, bài làm chi tiết."
-      })
-    });
-    await mutateSubmissions();
-    setIsSubmitting(false);
-    goBack();
+    try {
+      await fetch('/api/submissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedStudent,
+          teacherScore: teacherTotal,
+          teacherComment
+        })
+      });
+      await mutateSubmissions();
+    } finally {
+      setIsSubmitting(false);
+      goBack();
+    }
   };
 
   const exams = selectedClass ? EXAMS.filter((e: any) => e.classId === selectedClass) : [];
@@ -267,7 +247,7 @@ export default function GradingPage() {
             <section className="w-[45%] bg-surface-container-lowest p-10 overflow-y-auto border-r border-outline-variant/30 flex justify-center">
               <div className="max-w-2xl w-full">
                 <header className="mb-10">
-                  <h2 className="font-headline text-3xl font-black text-primary mb-2">{student.name}</h2>
+                  <h2 className="font-headline text-3xl font-black text-primary mb-2">{essayData?.studentName || student?.name || 'Học sinh'}</h2>
                   <div className="flex gap-4 text-sm text-slate-500 font-medium">
                     <span>{CLASSES.find(c => c.id === selectedClass)?.name}</span>
                     <span className="text-outline-variant">•</span>
@@ -275,14 +255,16 @@ export default function GradingPage() {
                   </div>
                 </header>
                 <article className="font-body text-lg leading-relaxed text-on-surface/90 space-y-6 text-justify">
-                  <p>Lão Hạc là một trong những hình tượng tiêu biểu nhất cho vẻ đẹp và nỗi khổ của người nông dân Việt Nam trước Cách mạng tháng Tám. Nhân vật này không chỉ mang trong mình nỗi đau về thể xác mà còn là một tấm gương sáng về lòng tự trọng và tình yêu thương con vô hạn.</p>
-                  <p>Mở đầu tác phẩm, Nam Cao đã khắc họa một Lão Hạc già yếu, cô đơn sau khi con trai đi phu đồn điền. Lão sống cùng cậu Vàng - người bạn thân thiết duy nhất.</p>
-                  <p>Cái chết của Lão Hạc ở cuối truyện là một kết thúc đầy ám ảnh. Lão chọn bả chó để kết thúc đời mình — một cái chết đau đớn nhưng sạch sẽ.</p>
-                  <p>Tóm lại, Lão Hạc không chỉ là một lão nông nghèo khổ mà là hiện thân của những giá trị đạo đức cao đẹp.</p>
+                  {!essayData?.answers?.length && (
+                    <p className="text-slate-400 italic">Đang tải bài làm...</p>
+                  )}
+                  {essayData?.answers?.map((a, i) => (
+                    <p key={a.questionId || i}>{a.content || '(Chưa có nội dung)'}</p>
+                  ))}
                 </article>
                 <footer className="mt-12 pt-6 border-t border-outline-variant/20 flex justify-between items-center text-sm text-slate-400 italic">
-                  <span>Số chữ: 487</span>
-                  <span>Cập nhật: 2 giờ trước</span>
+                  <span>{essayData?.answers?.length || 0} câu trả lời</span>
+                  <span>{essayData?.studentName ? 'Từ học sinh' : '—'}</span>
                 </footer>
               </div>
             </section>
@@ -310,12 +292,7 @@ export default function GradingPage() {
                       </tr>
                     </thead>
                     <tbody className="text-sm">
-                      {[
-                        { name: "Nội dung (40%)", desc: "Phân tích đúng yêu cầu đề bài", ai: "7.5", gv: "7.5" },
-                        { name: "Lập luận (25%)", desc: "Sự logic và thuyết phục", ai: "6.0", gv: "6.5" },
-                        { name: "Diễn đạt (20%)", desc: "Từ vựng, ngữ pháp linh hoạt", ai: "8.0", gv: "8.0" },
-                        { name: "Hình thức (15%)", desc: "Trình bày, lỗi chính tả", ai: "9.0", gv: "9.0" },
-                      ].map((row) => (
+                      {rubricScores.map((row, idx) => (
                         <tr key={row.name} className="border-b border-outline-variant/10 hover:bg-surface-container-low/30 transition-colors">
                           <td className="px-6 py-4">
                             <div className="font-bold">{row.name}</div>
@@ -323,14 +300,26 @@ export default function GradingPage() {
                           </td>
                           <td className="px-6 py-4 font-bold text-secondary text-lg">{row.ai}</td>
                           <td className="px-6 py-4">
-                            <input className="w-16 bg-white border-[0.5px] border-outline-variant/30 rounded focus:ring-2 focus:ring-primary py-1.5 text-center font-medium" defaultValue={row.gv} type="text" />
+                            <input
+                              className="w-16 bg-white border-[0.5px] border-outline-variant/30 rounded focus:ring-2 focus:ring-primary py-1.5 text-center font-medium"
+                              value={row.gvRef}
+                              onChange={e => {
+                                const next = [...rubricScores];
+                                next[idx] = { ...next[idx], gvRef: e.target.value };
+                                setRubricScores(next);
+                              }}
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.1"
+                            />
                           </td>
                         </tr>
                       ))}
                       <tr className="bg-primary text-white">
                         <td className="px-6 py-5 font-headline font-bold text-lg uppercase tracking-wider">Tổng điểm</td>
-                        <td className="px-6 py-5 font-headline font-black text-2xl text-blue-200">7.4</td>
-                        <td className="px-6 py-5"><div className="w-16 text-center font-headline font-bold text-2xl">7.5</div></td>
+                        <td className="px-6 py-5 font-headline font-black text-2xl text-blue-200">{rubricScores.reduce((s, r) => s + (parseFloat(r.ai) || 0), 0).toFixed(1)}</td>
+                        <td className="px-6 py-5"><div className="w-16 text-center font-headline font-bold text-2xl">{teacherTotal.toFixed(1)}</div></td>
                       </tr>
                     </tbody>
                   </table>
@@ -346,7 +335,13 @@ export default function GradingPage() {
 
                 <div className="space-y-3">
                   <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold">NHẬN XÉT CỦA GIÁO VIÊN</label>
-                  <textarea className="w-full bg-white border-[0.5px] border-outline-variant/30 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl p-6 shadow-sm italic leading-relaxed text-slate-700 transition-all" placeholder="Nhập nhận xét..." rows={4}></textarea>
+                  <textarea
+                    className="w-full bg-white border-[0.5px] border-outline-variant/30 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl p-6 shadow-sm leading-relaxed text-slate-700 transition-all"
+                    placeholder="Nhập nhận xét cho học sinh..."
+                    rows={4}
+                    value={teacherComment}
+                    onChange={e => setTeacherComment(e.target.value)}
+                  />
                 </div>
 
                 <div className="flex items-center justify-end gap-4 pt-6 border-t border-outline-variant/10">

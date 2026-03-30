@@ -24,6 +24,7 @@ const ExamDetail = lazy(() => import("./pages/student/ExamDetail"));
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
 
 // Admin
+const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
 const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
@@ -99,6 +100,9 @@ export default function App() {
           <Route path="classes" element={<AdminClasses />} />
           <Route path="logs" element={<AdminLogs />} />
         </Route>
+
+        {/* Admin Login */}
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
         {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />

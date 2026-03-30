@@ -1,6 +1,8 @@
 ﻿import React from 'react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function StudentProfilePage() {
+  const { user } = useAuth();
   return (
     <div className="pt-28 px-12 pb-20 max-w-7xl mx-auto page-enter">
       {/* Profile Header */}
@@ -10,20 +12,16 @@ export default function StudentProfilePage() {
           <img 
             className="relative w-40 h-40 rounded-full object-cover border-4 border-surface shadow-xl" 
             src="/images/student_portrait.png" 
-            alt="Nguyễn Thị Mai" 
+            alt={user?.name || 'Học sinh'} 
           />
         </div>
         <div className="pb-2">
           <span className="font-label text-secondary text-xs font-bold tracking-[0.2em] uppercase mb-2 block">Học viên xuất sắc</span>
-          <h1 className="font-headline text-5xl font-bold text-primary tracking-tight mb-3">Nguyễn Thị Mai</h1>
+          <h1 className="font-headline text-5xl font-bold text-primary tracking-tight mb-3">{user?.name || 'Học sinh'}</h1>
           <div className="flex items-center gap-6 text-on-surface-variant">
             <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">school</span>
-              <span className="font-body text-lg font-medium">Lớp 8A</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">location_city</span>
-              <span className="font-body text-lg font-medium">Trường THCS Nguyễn Du</span>
+              <span className="material-symbols-outlined text-sm">mail</span>
+              <span className="font-body text-lg font-medium">{user?.email || '—'}</span>
             </div>
           </div>
         </div>

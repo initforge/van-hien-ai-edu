@@ -5,7 +5,7 @@ export async function onRequestGet({ env }) {
     const result = await env.DB.prepare(
       "SELECT id, name, teacher_id AS teacherId, created_at AS createdAt FROM classes ORDER BY created_at DESC"
     ).all();
-    return cachedJson(result.results || [], { profile: 'static' });
+    return cachedJson(result.results || [], { profile: 'dynamic' });
   } catch (e) {
     return cachedJson([], { profile: 'static' });
   }

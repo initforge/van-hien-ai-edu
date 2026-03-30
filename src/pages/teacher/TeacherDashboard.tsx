@@ -5,7 +5,8 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function TeacherDashboardPage() {
   const { data } = useSWR('/api/stats', fetcher);
-  const stats = (data as any) || { studentsCount: 156, pendingGrading: 12, examsCreated: 28, aiPending: '05' };
+  // API returns: studentCount, pendingGrading, totalExams, aiPending
+  const stats = (data as any) || { studentCount: 0, pendingGrading: 0, totalExams: 0, aiPending: 0 };
 
   return (
     <>
@@ -21,7 +22,7 @@ export default function TeacherDashboardPage() {
           <div className="relative z-10">
             <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">Sĩ số</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-headline font-bold text-primary">{stats.studentsCount}</span>
+              <span className="text-4xl font-headline font-bold text-primary">{stats.studentCount}</span>
               <span className="text-outline text-sm">học sinh</span>
             </div>
             <p className="text-xs text-outline mt-2">Tổng số 4 lớp đang dạy</p>
@@ -48,7 +49,7 @@ export default function TeacherDashboardPage() {
           <div className="relative z-10">
             <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">Đề đã tạo</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-headline font-bold text-primary">{stats.examsCreated}</span>
+              <span className="text-4xl font-headline font-bold text-primary">{stats.totalExams}</span>
               <span className="text-outline text-sm">đề thi</span>
             </div>
             <p className="text-xs text-outline mt-2">18 bài tập · 10 bài thi</p>
@@ -60,7 +61,7 @@ export default function TeacherDashboardPage() {
           <div className="relative z-10">
             <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">AI chờ duyệt</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-headline font-bold text-primary">{String(stats.aiPending).padStart(2, '0')}</span>
+              <span className="text-4xl font-headline font-bold text-primary">{String(stats.aiPending || 0).padStart(2, '0')}</span>
               <span className="text-outline text-sm">nội dung</span>
             </div>
             <p className="text-xs text-outline mt-2">Phân tích tác phẩm tự động</p>

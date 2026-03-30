@@ -3,31 +3,34 @@ import { Link, useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState<string | false>(false);
-  const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const handleLogin = async (role: "teacher" | "student") => {
-    if (!email.trim()) {
-      setErrorMsg("Vui lòng nhập Email học giả.");
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim() || !password) {
+      setErrorMsg("Vui lòng nhập username và mật khẩu.");
       return;
     }
-    
-    setIsLoading(role);
+
+    setIsLoading(true);
     setErrorMsg("");
-    
+
     try {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role, email: email.trim() }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
-      const data = await res.json() as { redirect?: string, error?: string };
-      
+      const data = await res.json() as { redirect?: string; error?: string };
+
       if (!res.ok) {
         throw new Error(data.error || "Đăng nhập thất bại");
       }
-      
+
       if (data.redirect) {
         navigate(data.redirect);
       }
@@ -119,7 +122,6 @@ export default function LoginPage() {
 
             {/* Login Form */}
             <div className="flex-grow space-y-6">
-              
               {errorMsg && (
                 <div className="bg-error/10 text-error p-3 rounded-xl text-sm font-semibold border border-error/20 flex items-center gap-2" style={{ animation: "fadeIn 0.3s ease-out both" }}>
                   <span className="material-symbols-outlined text-sm">error</span>
@@ -127,48 +129,77 @@ export default function LoginPage() {
                 </div>
               )}
 
-              <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
-                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Email hoặc Username</label>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleLogin('teacher'); }}
-                  className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
-                  placeholder="an@vanhocai.edu.vn hoặc xuanlinh"
-                  type="text"
-                  autoComplete="username"
-                />
-              </div>
-              <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
-                <button 
-                  onClick={() => handleLogin("teacher")} 
-                  disabled={!!isLoading}
-                  className="block w-full text-center py-4 bg-primary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 mb-3 disabled:opacity-50"
-                >
-                  {isLoading === "teacher" ? "Đang xử lý..." : "Đăng nhập Giáo viên"}
-                </button>
-              </div>
-              <div style={{ animation: "fadeIn 0.5s ease-out 0.8s both" }}>
-                <button
-                  onClick={() => handleLogin("student")}
-                  disabled={!!isLoading}
-                  className="block w-full text-center py-4 bg-secondary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-secondary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50"
-                >
-                  {isLoading === "student" ? "Đang xử lý..." : "Đăng nhập Học sinh"}
-                </button>
-              </div>
-              <div style={{ animation: "fadeIn 0.5s ease-out 0.85s both" }}>
-                <button
-                  onClick={() => handleLogin("admin")}
-                  disabled={!!isLoading}
-                  className="block w-full text-center py-3 bg-[#C9A84C] text-white font-headline font-bold text-base rounded-full shadow-lg hover:shadow-xl hover:shadow-[#C9A84C]/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50"
-                >
-                  {isLoading === "admin" ? "Đang xử lý..." : "Đăng nhập Quản trị"}
-                </button>
-              </div>
+              <form onSubmit={handleLogin} className="space-y-5">
+                {/* Username */}
+                <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
+                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Username</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">account_circle</span>
+                    <input
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                      placeholder="an hoặc mai"
+                      type="text"
+                      autoComplete="username"
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
+                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu</label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">lock</span>
+                    <input
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 pr-12 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                      placeholder="••••••••"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-outline/50 hover:text-primary transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-lg">
+                        {showPassword ? "visibility_off" : "visibility"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full text-center py-4 bg-primary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? (
+                      <><span className="material-symbols-outlined animate-spin text-lg">progress_activity</span> Đang xử lý...</>
+                    ) : (
+                      <><span className="material-symbols-outlined text-lg">login</span> Đăng nhập</>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
+
+            {/* Admin link */}
             <div className="mt-8 text-center" style={{ animation: "fadeIn 0.5s ease-out 0.9s both" }}>
-              <p className="text-[12px] text-on-surface-variant/60 leading-relaxed">
+              <Link
+                to="/admin/login"
+                className="inline-flex items-center gap-2 text-sm text-[#C9A84C] hover:text-[#b8973d] font-semibold transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">admin_panel_settings</span>
+                Đăng nhập Quản trị
+              </Link>
+              <p className="text-[12px] text-on-surface-variant/60 leading-relaxed mt-4">
                 Bằng việc tiếp tục, bạn đồng ý với Điều khoản dịch vụ và Chính sách bảo mật của chúng tôi.
               </p>
             </div>

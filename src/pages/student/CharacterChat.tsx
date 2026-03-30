@@ -1,56 +1,48 @@
-﻿import React, { useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 
-const WORKS = [
-  {
-    id: "lao-hac",
-    title: "Lão Hạc",
-    author: "Nam Cao",
-    characters: [
-      { id: "lao-hac", name: "Lão Hạc", role: "Nhân vật chính", desc: "Già nua, thương con, tự trọng. Một người nông dân nghèo khổ với tâm hồn thanh cao và nỗi giằng xé nội tâm khi phải bán đi kỉ vật của con trai.", avatar: "LH" },
-      { id: "ong-giao", name: "Ông giáo", role: "Người kể chuyện", desc: "Trí thức, day dứt, thấu hiểu. Là người láng giềng thân thiết chứng kiến bi kịch của Lão Hạc, đại diện cho tiếng nói tri thức.", avatar: "OG" },
-    ],
-  },
-  {
-    id: "tat-den",
-    title: "Tắt đèn",
-    author: "Ngô Tất Tố",
-    characters: [
-      { id: "chi-dau", name: "Chị Dậu", role: "Nhân vật chính", desc: "Phụ nữ nông thôn cần cù, yêu chồng thương con, dám đứng lên chống lại cường quyền để bảo vệ gia đình.", avatar: "CD" },
-    ],
-  },
-  {
-    id: "truyen-kieu",
-    title: "Truyện Kiều",
-    author: "Nguyễn Du",
-    characters: [
-      { id: "thuy-kieu", name: "Thuý Kiều", role: "Nhân vật chính", desc: "Tài sắc vẹn toàn, chịu mười lăm năm lưu lạc, trải qua bao nỗi oan khiên nhưng vẫn giữ tấm lòng son.", avatar: "TK" },
-    ],
-  },
-  {
-    id: "chiec-luoc-nga",
-    title: "Chiếc lược ngà",
-    author: "Nguyễn Quang Sáng",
-    characters: [
-      { id: "ong-sau", name: "Ông Sáu", role: "Nhân vật chính", desc: "Người cha chiến sĩ yêu con da diết, dành trọn tình thương để làm chiếc lược ngà cho con gái.", avatar: "OS" },
-    ],
-  },
-];
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-const SAMPLE_MESSAGES = [
-  { role: "user" as const, text: "Tại sao ông lại phải bán cậu Vàng?", time: "10:42 AM" },
-  { role: "ai" as const, text: "\"Con ơi, ta đau lòng lắm... Cậu Vàng là kỉ niệm con trai ta để lại. Nhưng ta già rồi, không nuôi nổi mình, lại không muốn phạm vào cái mảnh vườn để lại cho nó. Đành lòng phải dứt bỏ cậu ấy đi, ta như đứt từng khúc ruột...\"", time: "10:42 AM" },
-  { role: "user" as const, text: "Ông có hối hận không?", time: "10:43 AM" },
-  { role: "ai" as const, text: "\"Hối hận ư? Ông giáo ơi! Tôi ăn ở với nó bao năm, nó trung thành với tôi, thế mà tôi lừa nó! Tôi già bằng này tuổi đầu rồi mà đi đánh lừa một con chó! Cái giống nó khôn, nó nhìn tôi như thể trách móc, làm tôi quặn lòng...\"", time: "10:43 AM" },
-];
+type Step = "select-work" | "select-character" | "chatting";
+interface Message { role: "user" | "ai"; text: string; time: string; }
+interface WorkChar { id: string; name: string; role: string; desc: string; avatar: string; }
+interface GroupedWork { id: string; title: string; author: string; characters: WorkChar[]; }
 
 export default function CharacterChatPage() {
-  const [step, setStep] = useState<"select-work" | "select-character" | "chatting">("select-work");
+  const [step, setStep] = useState<Step>("select-work");
   const [selectedWork, setSelectedWork] = useState<string | null>(null);
   const [selectedChar, setSelectedChar] = useState<string | null>(null);
-  const [messages, setMessages] = useState(SAMPLE_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [threadId, setThreadId] = useState<string | null>(null);
 
-  const work = WORKS.find((w) => w.id === selectedWork);
+  const { data: charactersData, isLoading } = useSWR("/api/characters", fetcher);
+  const characters = (charactersData || []) as any[];
+
+  const works: GroupedWork[] = (() => {
+    const map = new Map<string, GroupedWork>();
+    for (const c of characters) {
+      if (!c.workId) continue;
+      if (!map.has(c.workId)) {
+        map.set(c.workId, {
+          id: c.workId,
+          title: c.workTitle || "Tác phẩm",
+          author: "",
+          characters: [],
+        });
+      }
+      map.get(c.workId)!.characters.push({
+        id: c.id,
+        name: c.name,
+        role: c.role || "Nhân vật",
+        desc: c.description || "",
+        avatar: c.initials || (c.name?.slice(0, 2).toUpperCase() ?? "??"),
+      });
+    }
+    return Array.from(map.values());
+  })();
+
+  const work = works.find((w) => w.id === selectedWork);
   const character = work?.characters.find((c) => c.id === selectedChar);
 
   const handleSelectWork = (id: string) => {
@@ -59,8 +51,19 @@ export default function CharacterChatPage() {
     setStep("select-character");
   };
 
-  const handleSelectChar = (id: string) => {
+  const handleSelectChar = async (id: string) => {
     setSelectedChar(id);
+    try {
+      const charName = work?.characters.find((c) => c.id === id)?.name || id;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [], characterId: charName }),
+      });
+      if (res.headers.has("X-Thread-Id")) {
+        setThreadId(res.headers.get("X-Thread-Id")!);
+      }
+    } catch (_) { /* non-critical */ }
     setStep("chatting");
   };
 
@@ -76,48 +79,40 @@ export default function CharacterChatPage() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    const newMsg = { role: "user" as const, text: input, time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) };
+    const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    const newMsg: Message = { role: "user", text: input, time };
     const currentMessages = [...messages, newMsg];
-    setMessages(currentMessages);
+    setMessages((prev) => [...prev, newMsg, { role: "ai", text: "", time }]);
     setInput("");
-    
-    // Add empty AI message row to populate
-    setMessages(prev => [
-      ...prev,
-      {
-        role: "ai" as const,
-        text: "",
-        time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
 
     try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: currentMessages, characterId: character?.name })
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: currentMessages, characterId: character?.name, threadId }),
       });
-
-      if (!res.body) return;
-      
+      if (!res.body) throw new Error("No response body");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      
-      let isDone = false;
-      while (!isDone) {
-        const { value, done } = await reader.read();
-        isDone = done;
+      let done = false;
+      while (!done) {
+        const { value, done: d } = await reader.read();
+        done = d;
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          setMessages(prev => {
+          setMessages((prev) => {
             const msgs = [...prev];
-            msgs[msgs.length - 1].text += chunk;
+            msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: msgs[msgs.length - 1].text + chunk };
             return msgs;
           });
         }
       }
-    } catch (err) {
-      console.error('Chat error:', err);
+    } catch {
+      setMessages((prev) => {
+        const msgs = [...prev];
+        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: "(Lỗi: Không nhận được phản hồi. Vui lòng thử lại.)" };
+        return msgs;
+      });
     }
   };
 
@@ -131,7 +126,13 @@ export default function CharacterChatPage() {
           <p className="text-on-surface-variant max-w-xl">Chọn một tác phẩm văn học để bắt đầu trò chuyện với nhân vật bên trong.</p>
         </header>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-          {WORKS.map((w) => (
+          {isLoading && (
+            <div className="col-span-4 p-12 text-center text-outline">Đang tải tác phẩm...</div>
+          )}
+          {!isLoading && works.length === 0 && (
+            <div className="col-span-4 p-12 text-center text-outline">Chưa có tác phẩm nào được phân tích.</div>
+          )}
+          {works.map((w) => (
             <div
               key={w.id}
               onClick={() => handleSelectWork(w.id)}
@@ -195,11 +196,10 @@ export default function CharacterChatPage() {
     );
   }
 
-  // ── STEP 3: Chat Interface (Full Screen) ──
+  // ── STEP 3: Chat Interface ──
   if (step === "chatting" && character && work) {
     return (
       <div className="flex flex-col h-screen">
-        {/* Chat Header */}
         <div className="px-8 py-4 border-b border-outline-variant/10 flex items-center justify-between bg-white/80 backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-4">
             <button onClick={handleBack} className="text-slate-400 hover:text-primary transition-colors">
@@ -215,15 +215,15 @@ export default function CharacterChatPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => { setMessages(SAMPLE_MESSAGES); }} className="flex items-center gap-2 px-4 py-2 border border-outline-variant/30 bg-white text-primary-container rounded-lg text-sm font-bold hover:bg-primary-container/5 transition-all shadow-sm">
-              <span className="material-symbols-outlined text-sm">add</span>
-              Trò chuyện mới
-            </button>
-          </div>
+          <button
+            onClick={() => { setMessages([]); setThreadId(null); }}
+            className="flex items-center gap-2 px-4 py-2 border border-outline-variant/30 bg-white text-primary-container rounded-lg text-sm font-bold hover:bg-primary-container/5 transition-all shadow-sm"
+          >
+            <span className="material-symbols-outlined text-sm">add</span>
+            Trò chuyện mới
+          </button>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-surface-container-low/30">
           {messages.map((msg, i) =>
             msg.role === "user" ? (
@@ -249,7 +249,6 @@ export default function CharacterChatPage() {
           )}
         </div>
 
-        {/* Input */}
         <div className="p-6 pt-4 bg-white/80 backdrop-blur-md border-t border-outline-variant/10 shrink-0">
           <div className="relative flex items-center bg-surface-container-lowest border border-outline-variant/40 rounded-xl px-2 py-2 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/30 transition-all shadow-sm max-w-4xl mx-auto">
             <input
@@ -269,7 +268,7 @@ export default function CharacterChatPage() {
           </div>
           <p className="text-[10px] text-center text-slate-400 mt-3 flex items-center justify-center gap-1">
             <span className="material-symbols-outlined text-[12px]">info</span>
-            Nhân vật AI được huấn luyện dựa trên nguyên tác văn học của {work.author}.
+            Nhân vật AI được huấn luyện dựa trên nguyên tác văn học.
           </p>
         </div>
       </div>

@@ -1,10 +1,11 @@
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode("V4nHocA1_SuperS3cretKey_2026!");
+// JWT_SECRET must be set via: wrangler secret put JWT_SECRET
+// Never hardcode secrets in production
 
 // Middleware that runs before /api/* handlers
 export async function onRequest(context) {
-  const { request, next, data } = context;
+  const { request, next, data, env } = context;
   const url = new URL(request.url);
 
   // Skip auth checks for login and public endpoints
@@ -29,9 +30,12 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
     }
 
-    // Verify JWT
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    
+    // Verify JWT using env secret
+    if (!env.JWT_SECRET) {
+      return new Response(JSON.stringify({ error: "Server misconfigured" }), { status: 500 });
+    }
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
+
     // Attach user payload to context data so downstream API can use it
     data.user = payload;
 

@@ -24,7 +24,7 @@ export default function ExamBankPage() {
         workId: formData.get('work'),
         classId: formData.get('cls'),
         type: activeTab,
-        duration: activeTab === 'exam' ? 90 : 0
+        duration: Number(formData.get('duration')) || (activeTab === 'exam' ? 90 : 0)
       })
     });
     
@@ -85,20 +85,20 @@ export default function ExamBankPage() {
             <div className="space-y-2">
               <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Loại đề</label>
               <select name="genre" className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
-                <option>Nghị luận</option>
-                <option>Cảm thụ</option>
-                <option>Tự luận ngắn</option>
-                <option>Trắc nghiệm + Tự luận</option>
+                <option value="Nghị luận">Nghị luận</option>
+                <option value="Cảm thụ">Cảm thụ</option>
+                <option value="Tự luận ngắn">Tự luận ngắn</option>
+                <option value="Trắc nghiệm + Tự luận">Trắc nghiệm + Tự luận</option>
               </select>
             </div>
             {activeTab === "exam" && (
               <div className="space-y-2">
                 <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Thời lượng</label>
-                <select className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
-                  <option>15 phút</option>
-                  <option>45 phút</option>
-                  <option>90 phút</option>
-                  <option>120 phút</option>
+                <select name="duration" className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20">
+                  <option value="15">15 phút</option>
+                  <option value="45">45 phút</option>
+                  <option value="90">90 phút</option>
+                  <option value="120">120 phút</option>
                 </select>
               </div>
             )}

@@ -1,23 +1,19 @@
 import { Link } from 'react-router-dom';
-import React, { useState } from 'react';
+import { useState } from 'react';
+
 import useSWR from 'swr';
+import { useAuth } from '../../contexts/AuthContext';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function StudentDashboardPage() {
   const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const { user } = useAuth();
   const { data } = useSWR('/api/stats', fetcher);
   const statsData: any = data;
   
-  const upcomingExams = statsData?.upcomingExams?.length > 0 ? statsData.upcomingExams : [
-    { id: '1', title: 'Phân tích nhân vật Lão Hạc', type: 'exercise', deadline: '22/03/2026' }, 
-    { id: '2', title: 'Đề thi giữa kỳ — Lớp 8', type: 'exam', deadline: '25/03/2026' }
-  ];
-
-  const recentResults = statsData?.recentResults?.length > 0 ? statsData.recentResults : [
-    { submissionId: 'r1', examTitle: 'Nghị luận xã hội — Lòng dũng cảm', examType: 'exercise', teacherScore: 8.0, aiScore: 8.5, teacherComment: "Bài viết có ý tưởng tốt, phân tích sâu sắc. Cần bổ sung thêm dẫn chứng cụ thể." },
-    { submissionId: 'r2', examTitle: 'Đọc hiểu — Đồng chí', examType: 'exam', teacherScore: 7.5, aiScore: 7.0, teacherComment: "Phân tích tốt hình ảnh thơ. Cần liên hệ thực tế để bài viết sâu sắc hơn." }
-  ];
+  const upcomingExams = statsData?.upcomingExams ?? [];
+  const recentResults = statsData?.recentResults ?? [];
 
 
   return (
@@ -43,7 +39,7 @@ export default function StudentDashboardPage() {
       <div className="pt-24 pb-12 px-10 max-w-6xl mx-auto">
         {/* Greeting */}
         <section className="mb-12">
-          <h2 className="font-headline text-4xl font-extrabold text-primary tracking-tight mb-2">Chào buổi sáng, Mai!</h2>
+          <h2 className="font-headline text-4xl font-extrabold text-primary tracking-tight mb-2">Chào buổi sáng, {user?.name || 'bạn'}!</h2>
           <p className="text-on-surface-variant font-body">Cùng tiếp tục hành trình khám phá vẻ đẹp của ngôn từ nhé.</p>
         </section>
 

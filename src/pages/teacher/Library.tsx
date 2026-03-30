@@ -1,15 +1,26 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import useSWR from 'swr';
 
-const fetcher = (url: string) => fetch(url).then(res => res.json() as Promise<any[]>);
+const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function LibraryPage() {
-  const [selected, setSelected] = useState<number>(1);
+  const [selected, setSelected] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [search, setSearch] = useState('');
 
-  const { data: WORKS = [], isLoading, mutate } = useSWR('/api/works', fetcher);
+  const { data: works = [], isLoading, mutate } = useSWR('/api/works', fetcher);
+  const { data: characters = [] } = useSWR('/api/characters', fetcher);
 
-  const work = WORKS?.find(w => w.id === selected);
+  const filtered = works.filter((w: any) =>
+    w.title.toLowerCase().includes(search.toLowerCase()) ||
+    w.author.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const work = works.find((w: any) => w.id === selected) ?? null;
+
+  // Count active characters for a given workId
+  const charCountForWork = (workId: number) =>
+    (characters as any[]).filter((c: any) => c.workId === workId && c.active).length;
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -38,7 +49,7 @@ export default function LibraryPage() {
             <h2 className="text-3xl font-headline font-bold text-primary tracking-tight">Thư viện Tác phẩm</h2>
             <p className="text-sm text-outline mt-1 font-body">Quản lý và tra cứu các kiệt tác văn học trong chương trình.</p>
           </div>
-          <button 
+          <button
             onClick={() => setShowForm(!showForm)}
             className="bg-primary-container text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 hover:opacity-90 transition-all shadow-md active:scale-[0.98]"
           >
@@ -99,7 +110,13 @@ export default function LibraryPage() {
         <section className="mb-8 flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[300px] relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
-            <input className="w-full bg-surface-container-low border-none rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-primary/20 text-sm placeholder:text-outline/60" placeholder="Tìm kiếm tác phẩm..." type="text" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full bg-surface-container-low border-none rounded-lg py-3 pl-10 pr-4 focus:ring-2 focus:ring-primary/20 text-sm placeholder:text-outline/60"
+              placeholder="Tìm kiếm tác phẩm..."
+              type="text"
+            />
           </div>
           <div className="relative group">
             <button className="bg-white border-[0.5px] border-outline-variant/30 px-4 py-3 rounded-lg flex items-center gap-6 text-sm font-medium hover:bg-surface-container-low transition-colors">
@@ -117,7 +134,7 @@ export default function LibraryPage() {
 
         {/* Cards Grid */}
         <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
-          {WORKS?.map(w => (
+          {filtered.map((w: any) => (
             <div
               key={w.id}
               onClick={() => setSelected(w.id)}
@@ -137,14 +154,26 @@ export default function LibraryPage() {
               </div>
               {w.status === "analyzed" && (
                 <div className="grid grid-cols-3 gap-2 border-t border-outline-variant/20 pt-4 text-center">
-                  <div><p className="text-lg font-bold text-primary">{w.chars}</p><p className="text-[10px] text-outline uppercase">Nhân vật</p></div>
-                  <div><p className="text-lg font-bold text-primary">{w.excerpts}</p><p className="text-[10px] text-outline uppercase">Đoạn trích</p></div>
-                  <div><p className="text-lg font-bold text-primary">{w.chunks}</p><p className="text-[10px] text-outline uppercase">Chunks</p></div>
+                  <div><p className="text-lg font-bold text-primary">{charCountForWork(w.id)}</p><p className="text-[10px] text-outline uppercase">Nhân vật</p></div>
+                  <div><p className="text-lg font-bold text-primary">—</p><p className="text-[10px] text-outline uppercase">Đoạn trích</p></div>
+                  <div><p className="text-lg font-bold text-primary">—</p><p className="text-[10px] text-outline uppercase">Chunks</p></div>
                 </div>
               )}
               {selected === w.id && <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-1.5 h-12 bg-primary rounded-l-full"></div>}
             </div>
           ))}
+          {isLoading && works.length === 0 && (
+            <div className="col-span-full text-center py-12 text-slate-400">
+              <span className="material-symbols-outlined text-4xl animate-spin">sync</span>
+              <p className="mt-2 text-sm">Đang tải thư viện...</p>
+            </div>
+          )}
+          {!isLoading && filtered.length === 0 && (
+            <div className="col-span-full text-center py-12 text-slate-400">
+              <span className="material-symbols-outlined text-4xl">search_off</span>
+              <p className="mt-2 text-sm">Không tìm thấy tác phẩm nào.</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -157,8 +186,11 @@ export default function LibraryPage() {
           </div>
           <div className="mb-10">
             <h3 className="text-2xl font-headline font-bold text-primary mb-2">{work.title}</h3>
+            {work.author && <p className="text-sm text-outline italic mb-3">{work.author}</p>}
+            {work.grade && <span className="inline-block bg-secondary-fixed/30 text-secondary px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider mb-3">{work.grade}</span>}
+            {work.genre && <span className="inline-block ml-2 text-[11px] bg-surface-container px-2 py-1 rounded text-on-surface-variant font-medium">{work.genre}</span>}
             {work.status === "analyzed" && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-3">
                 <div className="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
                   <div className="bg-secondary h-full" style={{ width: '80%' }}></div>
                 </div>
@@ -168,7 +200,7 @@ export default function LibraryPage() {
           </div>
           {work.status === "analyzed" ? (
             <div className="space-y-4">
-              {["Tóm tắt cốt truyện", "Nhân vật: " + work.title.split(' ')[0], "Đặc sắc nghệ thuật", "Giá trị nội dung"].map((name, i) => (
+              {["Tóm tắt", "Nhân vật", "Đặc sắc nghệ thuật", "Giá trị nội dung"].map((name, i) => (
                 <div key={i} className="flex items-start gap-4 p-4 rounded-xl bg-white shadow-sm border border-secondary/20 hover:-translate-y-0.5 transition-transform cursor-pointer">
                   <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   <div>
