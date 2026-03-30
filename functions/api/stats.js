@@ -42,7 +42,7 @@ export async function onRequestGet({ env, data }) {
       ).bind(user.id).all();
 
       const recentResults = await env.DB.prepare(
-        "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment FROM submissions s LEFT JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT 5"
+        "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT 5"
       ).bind(user.id).all();
 
       return cachedJson({
