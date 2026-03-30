@@ -22,6 +22,13 @@ const ExamDetail = lazy(() => import("./pages/student/ExamDetail"));
 
 // Teacher
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
+
+// Admin
+const AdminLayout = lazy(() => import("./components/layout/AdminLayout"));
+const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
+const AdminUsers = lazy(() => import("./pages/admin/AdminUsers"));
+const AdminClasses = lazy(() => import("./pages/admin/AdminClasses"));
+const AdminLogs = lazy(() => import("./pages/admin/AdminLogs"));
 const Library = lazy(() => import("./pages/teacher/Library"));
 const ExamBank = lazy(() => import("./pages/teacher/ExamBank"));
 const Grading = lazy(() => import("./pages/teacher/Grading"));
@@ -47,7 +54,6 @@ export default function App() {
         {/* Public */}
         <Route path="/" element={<Homepage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/exam-room" element={<ExamRoomPage />} />
 
         {/* Student Dashboard */}
         <Route path="/student" element={
@@ -79,6 +85,19 @@ export default function App() {
           <Route path="characters" element={<Characters />} />
           <Route path="ai-review" element={<AIReview />} />
           <Route path="multiverse" element={<TeacherMultiverse />} />
+        </Route>
+
+        {/* Admin Dashboard */}
+        <Route path="/admin" element={
+          <ProtectedRoute allowedRole="admin">
+            <AdminLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="classes" element={<AdminClasses />} />
+          <Route path="logs" element={<AdminLogs />} />
         </Route>
 
         {/* Catch-all */}

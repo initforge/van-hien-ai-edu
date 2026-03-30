@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+
 import { useNavigate } from 'react-router-dom';
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'teacher' | 'student';
+  role: 'teacher' | 'student' | 'admin';
   avatar?: string;
 }
 
@@ -43,9 +44,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchUser();
   }, []);
 
-  const logout = () => {
-    // Just clear the cookie on the client side or via a logout endpoint
-    // For MVP, we'll clear cookie via document and navigate
+  const logout = async () => {
+    try {
+      await fetch('/api/auth', { method: 'DELETE' });
+    } catch (_) { /* best-effort */ }
     document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     setUser(null);
     navigate('/');
@@ -66,7 +68,7 @@ export function useAuth() {
   return context;
 }
 
-export function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: 'teacher' | 'student' }) {
+export function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: 'teacher' | 'student' | 'admin' }) {
   const { user, isLoading } = useAuth();
   
   if (isLoading) {
