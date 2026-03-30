@@ -5,33 +5,94 @@ type Tab = "exercise" | "exam";
 
 import { fetcher } from '../../lib/fetcher';
 
+interface AiQuestion {
+  content: string;
+  type: string;
+  points: number;
+  rubric?: string;
+}
+
 export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>([]);
+  const [examTitle, setExamTitle] = useState('');
   const { data: apiExamsData, isLoading, mutate } = useSWR('/api/exams', fetcher);
   const apiExams = apiExamsData?.data ?? [];
+
+  const handleAiGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setAiGenerating(true);
+    setAiQuestions([]);
+    const formData = new FormData(e.currentTarget);
+    const title = String(formData.get('title') || 'Đề thi mới');
+    const workId = String(formData.get('work') || '');
+    const classId = String(formData.get('cls') || '');
+
+    try {
+      // Call AI exam generation
+      const res = await fetch('/api/ai/exam-gen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          workId,
+          classId,
+          type: activeTab,
+          duration: activeTab === 'exam' ? 90 : 45,
+          questions: [],
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.questions?.length) {
+        setExamTitle(data.title);
+        setAiQuestions(data.questions);
+        setShowCreateForm(true);
+        await mutate();
+      }
+    } catch (e) {
+      console.error('AI exam generation failed:', e);
+    } finally {
+      setIsSubmitting(false);
+      setAiGenerating(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    
-    await fetch('/api/exams', {
-      method: 'POST',
+
+    // If AI questions are selected, use AI endpoint; otherwise manual
+    const url = aiQuestions.length ? '/api/ai/exam-gen' : '/api/exams';
+    const method = 'POST';
+
+    let body: Record<string, unknown> = {
+      title: String(formData.get('title') || examTitle || 'Đề thi mới'),
+      workId: String(formData.get('work') || ''),
+      classId: String(formData.get('cls') || ''),
+      type: activeTab,
+      duration: Number(formData.get('duration')) || (activeTab === 'exam' ? 90 : 45),
+    };
+
+    if (aiQuestions.length) {
+      body = { ...body, questions: aiQuestions };
+    }
+
+    await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: formData.get('title') || 'Đề thi mới',
-        workId: formData.get('work'),
-        classId: formData.get('cls'),
-        type: activeTab,
-        duration: Number(formData.get('duration')) || (activeTab === 'exam' ? 90 : 0)
-      })
+      body: JSON.stringify(body),
     });
-    
+
     await mutate();
     setIsSubmitting(false);
     setShowCreateForm(false);
+    setAiQuestions([]);
+    setExamTitle('');
   };
 
   return (

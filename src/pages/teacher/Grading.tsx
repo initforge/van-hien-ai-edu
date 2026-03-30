@@ -18,6 +18,8 @@ export default function GradingPage() {
   // Grading state
   const [rubricScores, setRubricScores] = useState<RubricRow[]>(RUBRIC_DEFAULT);
   const [teacherComment, setTeacherComment] = useState("");
+  const [aiGrading, setAiGrading] = useState(false);
+  const [aiResult, setAiResult] = useState<{ score: number | null; summary: string } | null>(null);
 
   const { data: classesData } = useSWR('/api/classes', fetcher);
   const { data: examsData } = useSWR('/api/exams', fetcher);
@@ -58,6 +60,31 @@ export default function GradingPage() {
     } finally {
       setIsSubmitting(false);
       goBack();
+    }
+  };
+
+  const handleAiGrade = async () => {
+    if (!selectedStudent) return;
+    setAiGrading(true);
+    setAiResult(null);
+    try {
+      const res = await fetch('/api/ai/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionId: selectedStudent })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiResult({ score: data.aiScore, summary: data.summary || '' });
+        if (data.aiScore !== null) {
+          setRubricScores(prev => prev.map(r => ({ ...r, ai: String(data.aiScore) })));
+        }
+        await mutateSubmissions();
+      }
+    } catch (e) {
+      console.error('AI grading failed:', e);
+    } finally {
+      setAiGrading(false);
     }
   };
 
@@ -282,9 +309,24 @@ export default function GradingPage() {
                     <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                     <h3 className="font-headline text-xl font-bold text-primary">Kết quả chấm AI</h3>
                   </div>
-                  <span className="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                    {student.status === "returned" ? "Đã trả bài" : "Đang chờ GV duyệt"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {aiResult && aiResult.score !== null && (
+                      <span className="bg-secondary/10 text-secondary px-3 py-1 rounded-full text-xs font-bold">
+                        AI: {aiResult.score}/10
+                      </span>
+                    )}
+                    <button
+                      onClick={handleAiGrade}
+                      disabled={aiGrading || student.status === 'returned'}
+                      className="flex items-center gap-1.5 bg-secondary hover:bg-secondary/90 disabled:opacity-50 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                      {aiGrading ? 'Đang chấm...' : student.status === 'returned' ? 'Đã chấm rồi' : 'Chấm bằng AI'}
+                    </button>
+                    <span className="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                      {student.status === "returned" ? "Đã trả bài" : "Đang chờ GV duyệt"}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="bg-white/80 backdrop-blur-md rounded-xl shadow-sm overflow-hidden border-[0.5px] border-outline-variant/30">
