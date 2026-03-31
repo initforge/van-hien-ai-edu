@@ -3,9 +3,25 @@ import useSWR from 'swr';
 import { fetcher } from '../../lib/fetcher';
 import type { User } from '../../types/api';
 
+type RoleFilter = 'all' | 'teacher' | 'student' | 'admin';
+
+const ROLE_META = {
+  all:     { label: 'Tất cả',     icon: 'group',          color: '#326286', bg: 'bg-[#326286]/10' },
+  teacher: { label: 'Giáo viên',  icon: 'school',         color: '#005142', bg: 'bg-[#005142]/10' },
+  student: { label: 'Học sinh',   icon: 'person',          color: '#C9A84C', bg: 'bg-[#C9A84C]/10' },
+  admin:   { label: 'Quản trị',   icon: 'admin_panel_settings', color: '#7c3aed', bg: 'bg-purple-100' },
+} as const;
+
+const ROLE_BADGE = {
+  teacher: { bg: 'bg-[#005142]/10', text: 'text-[#005142]' },
+  student: { bg: 'bg-[#C9A84C]/10', text: 'text-[#C9A84C]' },
+  admin:   { bg: 'bg-purple-100',   text: 'text-purple-700' },
+} as const;
+
 export default function AdminUsersPage() {
-  const { data: usersData, mutate, error } = useSWR('/api/admin/users', fetcher);
+  const { data: usersData, mutate } = useSWR('/api/admin/users', fetcher);
   const users: User[] = usersData?.data ?? [];
+  const [filter, setFilter] = useState<RoleFilter>('all');
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [form, setForm] = useState({ name: '', email: '', username: '', role: 'student' });
@@ -13,6 +29,14 @@ export default function AdminUsersPage() {
   const [submitError, setSubmitError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const filtered = filter === 'all' ? users : users.filter(u => u.role === filter);
+  const counts = {
+    all: users.length,
+    teacher: users.filter(u => u.role === 'teacher').length,
+    student: users.filter(u => u.role === 'student').length,
+    admin: users.filter(u => u.role === 'admin').length,
+  };
 
   const openCreate = () => {
     setEditUser(null);
@@ -33,13 +57,11 @@ export default function AdminUsersPage() {
     try {
       const method = editUser ? 'PUT' : 'POST';
       const body = editUser ? { ...form, id: editUser.id } : form;
-
       const res = await fetch('/api/admin/users', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-
       if (res.ok) {
         setShowModal(false);
         mutate();
@@ -50,10 +72,6 @@ export default function AdminUsersPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleDeleteRequest = (id: string) => {
-    setConfirmDeleteId(id);
   };
 
   const handleDeleteConfirm = async () => {
@@ -70,38 +88,50 @@ export default function AdminUsersPage() {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-8">
+      {/* Header */}
+      <div className="flex justify-between items-end mb-8">
         <div>
           <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">Quản lý Người dùng</h2>
           <p className="text-outline mt-1 text-sm">{users.length} tài khoản trong hệ thống</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors"
-        >
+        <button onClick={openCreate}
+          className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-all hover:shadow-md active:scale-[0.98]">
           <span className="material-symbols-outlined text-lg">person_add</span>
           Thêm Người dùng
         </button>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        {(['teacher', 'student', 'admin'] as const).map(role => {
-          const count = users.filter(u => u.role === role).length;
+      {/* Role Filter Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        {(Object.keys(ROLE_META) as RoleFilter[]).map(role => {
+          const meta = ROLE_META[role];
+          const active = filter === role;
           return (
-            <div key={role} className="bg-white/60 border border-[#326286]/10 rounded-xl p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                role === 'teacher' ? 'bg-primary/10 text-primary' :
-                role === 'admin' ? 'bg-[#C9A84C]/10 text-[#C9A84C]' :
-                'bg-tertiary/10 text-tertiary'
-              }`}>
-                <span className="material-symbols-outlined">{role === 'teacher' ? 'school' : role === 'admin' ? 'admin_panel_settings' : 'person'}</span>
+            <button
+              key={role}
+              onClick={() => setFilter(role)}
+              className={`relative flex items-center gap-3 rounded-2xl p-4 text-left transition-all active:scale-[0.98] ${
+                active
+                  ? `bg-white shadow-md ring-2`
+                  : 'bg-white/60 hover:bg-white hover:shadow-sm'
+              }`}
+              style={active ? { boxShadow: `0 0 0 2px ${meta.color}40` } : {}}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.bg}`}>
+                <span className="material-symbols-outlined text-lg" style={{ color: meta.color }}>
+                  {meta.icon}
+                </span>
               </div>
-              <div>
-                <p className="text-2xl font-bold text-primary">{count}</p>
-                <p className="text-xs text-outline capitalize">{role === 'admin' ? 'Quản trị' : role === 'teacher' ? 'Giáo viên' : 'Học sinh'}</p>
+              <div className="min-w-0">
+                <p className="text-2xl font-headline font-bold" style={{ color: active ? meta.color : 'var(--color-primary, #326286)' }}>
+                  {counts[role]}
+                </p>
+                <p className="text-xs text-outline truncate">{meta.label}</p>
               </div>
-            </div>
+              {active && (
+                <span className="absolute top-2 right-2 w-2 h-2 rounded-full" style={{ background: meta.color }} />
+              )}
+            </button>
           );
         })}
       </div>
@@ -111,7 +141,7 @@ export default function AdminUsersPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-outline-variant/10">
+              <tr className="border-b border-[#326286]/10">
                 <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Tên</th>
                 <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Username</th>
                 <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Email</th>
@@ -121,29 +151,27 @@ export default function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.length === 0 ? (
-                <tr><td colSpan={6} className="p-8 text-center text-outline">Chưa có người dùng</td></tr>
-              ) : users.map(u => (
-                <tr key={u.id} className="border-b border-outline-variant/5 hover:bg-surface-container-lowest transition-colors">
-                  <td className="p-4 font-semibold">{u.name}</td>
-                  <td className="p-4 text-outline font-mono text-xs">{u.username || '—'}</td>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={6} className="p-12 text-center text-outline">Không có người dùng</td></tr>
+              ) : filtered.map(u => (
+                <tr key={u.id} className="border-b border-[#326286]/5 hover:bg-[#326286]/5 transition-colors">
+                  <td className="p-4 font-semibold text-on-surface">{u.name}</td>
+                  <td className="p-4 font-mono text-xs text-outline">{u.username || '—'}</td>
                   <td className="p-4 text-outline">{u.email}</td>
                   <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      u.role === 'admin' ? 'bg-[#C9A84C]/10 text-[#C9A84C]' :
-                      u.role === 'teacher' ? 'bg-primary/10 text-primary' :
-                      'bg-tertiary/10 text-tertiary'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.bg} ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.text}`}>
                       {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
                     </span>
                   </td>
                   <td className="p-4 text-outline text-xs">{u.createdAt?.slice(0, 10)}</td>
                   <td className="p-4">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => openEdit(u)} className="p-2 hover:bg-primary/10 rounded-lg transition-colors text-primary" title="Sửa">
+                    <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => openEdit(u)}
+                        className="p-2 hover:bg-[#326286]/10 rounded-lg transition-colors text-primary" title="Sửa">
                         <span className="material-symbols-outlined text-sm">edit</span>
                       </button>
-                      <button onClick={() => handleDeleteRequest(u.id)} className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400" title="Xóa">
+                      <button onClick={() => setConfirmDeleteId(u.id)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400" title="Xóa">
                         <span className="material-symbols-outlined text-sm">delete</span>
                       </button>
                     </div>
@@ -164,33 +192,35 @@ export default function AdminUsersPage() {
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               {submitError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">{submitError}</div>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">{submitError}</div>
               )}
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Họ tên</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none" required />
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Username</label>
                 <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none font-mono" required />
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none font-mono transition-all" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Email</label>
                 <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none" required />
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Vai trò</label>
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full border border-outline-variant/30 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none">
-                  {(['student', 'teacher', 'admin'] as const).map(r => <option key={r} value={r}>{r === 'admin' ? 'Admin' : r === 'teacher' ? 'Giáo viên' : 'Học sinh'}</option>)}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all bg-white">
+                  <option value="student">Học sinh</option>
+                  <option value="teacher">Giáo viên</option>
+                  <option value="admin">Quản trị</option>
                 </select>
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 border border-outline-variant/30 py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors">
+                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
                   Hủy
                 </button>
                 <button type="submit" disabled={saving}
@@ -203,15 +233,15 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirm */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-            <h3 className="text-xl font-headline font-bold text-red-600 mb-2">Xác nhận xóa</h3>
-            <p className="text-sm text-slate-600 mb-6">Bạn có chắc muốn xóa người dùng này? Hành động này không thể hoàn tác.</p>
+            <h3 className="text-xl font-headline font-bold text-red-500 mb-2">Xác nhận xóa</h3>
+            <p className="text-sm text-slate-600 mb-6">Bạn có chắc muốn xóa người dùng này? Hành động không thể hoàn tác.</p>
             <div className="flex gap-3">
               <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 border border-outline-variant/30 py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors">
+                className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
                 Hủy
               </button>
               <button onClick={handleDeleteConfirm} disabled={deleting}
