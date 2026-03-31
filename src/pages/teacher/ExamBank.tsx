@@ -16,6 +16,7 @@ export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>([]);
   const [examTitle, setExamTitle] = useState('');
   const { data: apiExamsData, isLoading, mutate } = useSWR('/api/exams', fetcher);
@@ -60,7 +61,7 @@ export default function ExamBankPage() {
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setAiGenerating(true);
+    setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
 
     // If AI questions are selected, use AI endpoint; otherwise manual
@@ -86,7 +87,7 @@ export default function ExamBankPage() {
     });
 
     await mutate();
-    setAiGenerating(false);
+    setIsSubmitting(false);
     setShowCreateForm(false);
     setAiQuestions([]);
     setExamTitle('');

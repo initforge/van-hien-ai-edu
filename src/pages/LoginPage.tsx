@@ -34,8 +34,8 @@ export default function LoginPage() {
       if (data.redirect) {
         navigate(data.redirect);
       }
-    } catch (e: any) {
-      setErrorMsg(e.message || "Lỗi kết nối đến máy chủ.");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Lỗi kết nối đến máy chủ.");
       setIsLoading(false);
     }
   };
