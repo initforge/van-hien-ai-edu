@@ -10,8 +10,11 @@ export default function AdminDashboardPage() {
   const monthlyUsers: { month: string; count: number }[] = data?.monthlyUsers ?? [];
   const monthlySubmissions: { month: string; count: number }[] = data?.monthlySubmissions ?? [];
   const topTeachers: { id: string; name: string; examCount: number }[] = data?.topTeachers ?? [];
+  const roleDist: { role: string; count: number }[] = data?.roleDistribution ?? [];
 
-  // Build chart data
+  const userCount = roleDist.find(r => r.role === 'student')?.count ?? 0;
+  const teacherCount = roleDist.find(r => r.role === 'teacher')?.count ?? 0;
+
   const months = monthlyUsers.map(m => m.month);
   const userData = monthlyUsers.map(m => m.count);
   const subData = monthlySubmissions.map(m => m.count);
@@ -23,7 +26,7 @@ export default function AdminDashboardPage() {
         <p className="text-outline mt-2 font-body italic">"Quản trị là nghệ thuật làm cho mọi thứ xảy ra." — Quản trị hệ thống Văn Học AI</p>
       </div>
 
-      {/* Stat Cards */}
+      {/* Stat Cards — 6 cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
         <StatCard label="Tổng Users" value={counts.total} icon="group" color="primary" />
         <StatCard label="Giáo viên" value={counts.teachers} icon="school" color="secondary" />
@@ -37,9 +40,14 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
         {/* User Growth Chart */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 rounded-2xl p-6">
-          <h3 className="text-lg font-headline font-bold text-primary mb-4">Tăng trưởng Users</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-[#326286] text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>group_add</span>
+            <h3 className="text-base font-headline font-bold text-primary">Tăng trưởng Users</h3>
+          </div>
           {isLoading ? (
-            <div className="h-48 flex items-center justify-center text-outline">Đang tải...</div>
+            <div className="h-52 flex items-center justify-center text-outline">Đang tải...</div>
+          ) : monthlyUsers.length === 0 ? (
+            <div className="h-52 flex items-center justify-center text-outline text-sm">Chưa có dữ liệu</div>
           ) : (
             <BarChart data={userData} labels={months} color="#326286" />
           )}
@@ -47,9 +55,14 @@ export default function AdminDashboardPage() {
 
         {/* Submissions Chart */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 rounded-2xl p-6">
-          <h3 className="text-lg font-headline font-bold text-primary mb-4">Bài nộp theo Tháng</h3>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="material-symbols-outlined text-[#C9A84C] text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>upload_file</span>
+            <h3 className="text-base font-headline font-bold text-primary">Bài nộp theo Tháng</h3>
+          </div>
           {isLoading ? (
-            <div className="h-48 flex items-center justify-center text-outline">Đang tải...</div>
+            <div className="h-52 flex items-center justify-center text-outline">Đang tải...</div>
+          ) : monthlySubmissions.length === 0 ? (
+            <div className="h-52 flex items-center justify-center text-outline text-sm">Chưa có dữ liệu</div>
           ) : (
             <BarChart data={subData} labels={months} color="#C9A84C" />
           )}
@@ -58,25 +71,31 @@ export default function AdminDashboardPage() {
 
       {/* Top Teachers */}
       <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 rounded-2xl p-6">
-        <h3 className="text-lg font-headline font-bold text-primary mb-4">Top Giáo viên hoạt động</h3>
+        <div className="flex items-center gap-2 mb-4">
+          <span className="material-symbols-outlined text-secondary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>workspace_premium</span>
+          <h3 className="text-base font-headline font-bold text-primary">Top Giáo viên hoạt động</h3>
+        </div>
         {topTeachers.length === 0 ? (
-          <p className="text-outline text-sm">Chưa có dữ liệu</p>
+          <p className="text-outline text-sm text-center py-8">Chưa có dữ liệu</p>
         ) : (
           <div className="space-y-3">
             {topTeachers.map((t, i) => (
-              <div key={t.id} className="flex items-center gap-4 p-3 bg-surface-container-lowest rounded-xl">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold ${
-                  i === 0 ? 'bg-[#C9A84C]' : i === 1 ? 'bg-[#326286]/70' : 'bg-[#326286]/40'
+              <div key={t.id} className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl hover:shadow-sm transition-all">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${
+                  i === 0 ? 'bg-[#C9A84C]' : i === 1 ? 'bg-[#326286]/80' : 'bg-[#326286]/50'
                 }`}>
                   {i + 1}
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{t.name}</p>
+                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-primary text-base">school</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-on-surface truncate">{t.name}</p>
                   <p className="text-xs text-outline">{t.examCount} bài thi</p>
                 </div>
-                <div className="text-right">
-                  <span className="text-lg font-bold text-primary">{t.examCount}</span>
-                  <span className="text-xs text-outline ml-1">đề</span>
+                <div className="text-right shrink-0">
+                  <span className="text-xl font-headline font-bold text-primary">{t.examCount}</span>
+                  <p className="text-[10px] text-outline">đề</p>
                 </div>
               </div>
             ))}
@@ -90,44 +109,36 @@ export default function AdminDashboardPage() {
 function StatCard({ label, value, icon, color }: {
   label: string; value: number; icon: string; color: 'primary' | 'secondary' | 'tertiary';
 }) {
-  const colorMap = {
-    primary: 'text-primary',
-    secondary: 'text-secondary',
-    tertiary: 'text-tertiary',
-  };
-  const bgMap = {
-    primary: 'bg-primary/10',
-    secondary: 'bg-secondary/10',
-    tertiary: 'bg-tertiary/10',
-  };
+  const iconColor = color === 'primary' ? '#326286' : color === 'secondary' ? '#005142' : '#C9A84C';
+  const iconBg = color === 'primary' ? 'bg-[#326286]/10' : color === 'secondary' ? 'bg-[#005142]/10' : 'bg-[#C9A84C]/10';
+  const textColor = color === 'primary' ? 'text-[#326286]' : color === 'secondary' ? 'text-[#005142]' : 'text-[#C9A84C]';
 
   return (
-    <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 rounded-2xl p-4 relative overflow-hidden group hover:shadow-lg transition-all">
+    <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 rounded-2xl p-4 relative overflow-hidden group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
       <div className="relative z-10">
         <span className="text-[10px] font-bold text-outline uppercase tracking-widest block mb-2">{label}</span>
-        <span className="text-3xl font-headline font-bold text-primary">{value}</span>
+        <span className={`text-3xl font-headline font-bold ${textColor}`}>{value}</span>
       </div>
-      <span className={`material-symbols-outlined absolute -right-3 -bottom-3 text-7xl ${bgMap[color]} p-2 rounded-full`}
-        style={{ color: color === 'primary' ? '#326286' : color === 'secondary' ? '#326286' : '#C9A84C', opacity: 0.15 }}>
+      <span className={`material-symbols-outlined absolute -right-3 -bottom-3 text-7xl ${iconBg} p-2 rounded-full`}
+        style={{ color: iconColor, opacity: 0.12 }}>
         {icon}
       </span>
     </div>
   );
 }
 
-// Simple bar chart using CSS
 function BarChart({ data, labels, color }: { data: number[]; labels: string[]; color: string }) {
   const max = Math.max(...data, 1);
   return (
-    <div className="flex items-end gap-2 h-48">
+    <div className="flex items-end gap-2 h-52 mt-2">
       {data.map((val, i) => (
         <div key={i} className="flex-1 flex flex-col items-center gap-1">
           <div
-            className="w-full rounded-t-lg transition-all hover:opacity-80"
+            className="w-full rounded-t-lg transition-all duration-300 hover:brightness-110"
             style={{
-              height: `${Math.max((val / max) * 160, 4)}px`,
+              height: `${Math.max((val / max) * 176, 4)}px`,
               background: color,
-              opacity: 0.7 + (i / data.length) * 0.3,
+              opacity: 0.65 + (i / data.length) * 0.35,
             }}
           />
           <span className="text-[10px] text-outline">{labels[i]?.slice(5)}</span>
