@@ -7,7 +7,8 @@ export default function StudentResultsPage() {
   const [tab, setTab] = useState<"exercise" | "exam">("exercise");
   const [expanded, setExpanded] = useState<number | null>(0);
 
-  const { data: RESULTS = [], isLoading } = useSWR<Submission[]>('/api/submissions', fetcher);
+  const { data: resultsData, isLoading } = useSWR<{ data: Submission[]; total: number }>('/api/submissions', fetcher);
+  const RESULTS: Submission[] = resultsData?.data ?? [];
 
   const filtered = RESULTS.filter((r) => (r.type || "exercise") === tab);
 

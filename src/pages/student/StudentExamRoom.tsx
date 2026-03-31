@@ -23,7 +23,7 @@ type StatusFilter = 'all' | 'pending' | 'completed';
 
 export default function ExamRoomPage() {
   const { data, isLoading } = useSWR<Exam[]>('/api/exams', fetcher);
-  const { data: submissions } = useSWR<Submission[]>('/api/submissions', fetcher);
+  const { data: submissions } = useSWR<{ data: Submission[]; total: number }>('/api/submissions', fetcher);
 
   const EXAM_ROOMS: Exam[] = data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -33,7 +33,7 @@ export default function ExamRoomPage() {
 
   const submittedIds = React.useMemo(() => {
     const ids = new Set<string>();
-    submissions?.forEach(s => { if (s.examId) ids.add(s.examId); });
+    (submissions?.data ?? []).forEach(s => { if (s.examId) ids.add(s.examId); });
     return ids;
   }, [submissions]);
 
