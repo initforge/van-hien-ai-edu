@@ -15,7 +15,6 @@ interface AiQuestion {
 export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiQuestions, setAiQuestions] = useState<AiQuestion[]>([]);
   const [examTitle, setExamTitle] = useState('');
@@ -24,7 +23,6 @@ export default function ExamBankPage() {
 
   const handleAiGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setAiGenerating(true);
     setAiQuestions([]);
     const formData = new FormData(e.currentTarget);
@@ -56,14 +54,13 @@ export default function ExamBankPage() {
     } catch (e) {
       console.error('AI exam generation failed:', e);
     } finally {
-      setIsSubmitting(false);
       setAiGenerating(false);
     }
   };
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    setAiGenerating(true);
     const formData = new FormData(e.currentTarget);
 
     // If AI questions are selected, use AI endpoint; otherwise manual
@@ -89,7 +86,7 @@ export default function ExamBankPage() {
     });
 
     await mutate();
-    setIsSubmitting(false);
+    setAiGenerating(false);
     setShowCreateForm(false);
     setAiQuestions([]);
     setExamTitle('');
@@ -103,9 +100,13 @@ export default function ExamBankPage() {
           <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">Ngân hàng Đề</h2>
         </div>
         <div className="flex gap-4">
-          <button className="flex items-center gap-2 px-6 py-3 border border-primary text-primary hover:bg-primary/5 transition-all rounded-md font-medium active:scale-[0.98]">
-            <span className="material-symbols-outlined">auto_awesome</span>
-            AI gợi ý đề
+          <button
+            onClick={handleAiGenerate}
+            className="flex items-center gap-2 px-6 py-3 border border-primary text-primary hover:bg-primary/5 transition-all rounded-md font-medium active:scale-[0.98] disabled:opacity-50"
+            disabled={aiGenerating || isSubmitting}
+          >
+            <span className="material-symbols-outlined">{aiGenerating ? 'hourglass_empty' : 'auto_awesome'}</span>
+            {aiGenerating ? 'Đang tạo...' : 'AI gợi ý đề'}
           </button>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}

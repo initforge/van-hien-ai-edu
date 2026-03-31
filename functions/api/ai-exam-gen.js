@@ -8,6 +8,7 @@
  */
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
+import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -57,21 +58,13 @@ export async function onRequestPost({ request, env, data }) {
 
     // ── Call AI ─────────────────────────────────────────────────────────────
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
-      '@cf/qwen/qwen2.5-72b-instruct',
+      '@cf/qwen/qwen2.5-coder-32b-instruct',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
     );
 
     // Parse AI JSON
-    let parsedQuestions = [];
-    try {
-      const match = aiResponse.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
-        parsedQuestions = (parsed.questions || []).slice(0, 10);
-      }
-    } catch {
-      console.error('AI exam-gen parse failed');
-    }
+    const { parsed } = parseAiJson(aiResponse, null);
+    const parsedQuestions = /** @type {any[]} */ (parsed?.questions || []).slice(0, 10);
 
     if (!parsedQuestions.length) {
       return jsonError('AI không tạo được câu hỏi. Vui lòng thử lại.', 500);
@@ -123,6 +116,3 @@ export async function onRequestPost({ request, env, data }) {
   }
 }
 
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }), { status, headers: { 'Content-Type': 'application/json' } });
-}

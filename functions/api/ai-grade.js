@@ -8,6 +8,7 @@
  */
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
+import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -83,27 +84,23 @@ export async function onRequestPost({ request, env, data }) {
 
     // ── Call AI ─────────────────────────────────────────────────────────────
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
-      '@cf/qwen/qwen2.5-72b-instruct',
+      '@cf/google/gemma-3-12b-it',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1024, temperature: 0.2 }
     );
 
     // Parse AI response
-    let grading = { totalScore: null, summary: aiResponse, scores: [] };
-    try {
-      const match = aiResponse.match(/\{[\s\S]*\}/);
-      if (match) {
-        grading = JSON.parse(match[0]);
-      }
-    } catch {
-      console.error('AI grading parse failed, using raw response');
+    const { parsed: grading } = parseAiJson(aiResponse, null);
+    if (!grading) {
+      return jsonError('AI không trả JSON hợp lệ. Thử lại.', 500);
     }
 
-    const aiScore = grading.totalScore !== null && grading.totalScore !== undefined
-      ? Number(grading.totalScore.toFixed(1))
+    const gradingScores = /** @type {{ totalScore?: number, summary?: string, scores?: Array<{questionId: string, points: number, comment: string}> }} */ (grading || {});
+    const aiScore = gradingScores.totalScore !== null && gradingScores.totalScore !== undefined
+      ? Number(gradingScores.totalScore.toFixed(1))
       : null;
 
     // ── Save AI score to submission ─────────────────────────────────────────
-    const summaryComment = grading.summary || aiResponse.slice(0, 500);
+    const summaryComment = gradingScores.summary || aiResponse.slice(0, 500);
     await env.DB.prepare(
       `UPDATE submissions
        SET ai_score = ?, teacher_comment = CONCAT(IFNULL(teacher_comment,''), '\n[AI] ', ?),
@@ -119,7 +116,7 @@ export async function onRequestPost({ request, env, data }) {
       success: true,
       aiScore,
       summary: summaryComment,
-      details: grading.scores,
+      details: gradingScores.scores || [],
     }), {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -129,6 +126,3 @@ export async function onRequestPost({ request, env, data }) {
   }
 }
 
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }), { status, headers: { 'Content-Type': 'application/json' } });
-}

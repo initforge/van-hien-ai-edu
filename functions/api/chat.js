@@ -1,6 +1,7 @@
 import { checkRateLimit } from './_rateLimit.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { aiStream } from './_ai.js';
+import { jsonError, estimateTokens } from './_utils.js';
 
 // ─── System prompts by character ──────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export async function onRequestPost({ request, data, env }) {
 
     // ── AI streaming response ──────────────────────────────────────────────
     const { stream: aiStreamResp, fullText: fullTextPromise, inputTokens } =
-      aiStream('@cf/meta/llama-3.1-8b-instruct', {
+      aiStream('@cf/meta-llama/llama-3.1-8b-instruct', {
         systemPrompt: charPrompt.prompt,
         messages: recentMessages,
         maxTokens: 512,
@@ -125,7 +126,6 @@ export async function onRequestPost({ request, data, env }) {
 
     // ── Pipe AI chunks + buffer for DB persistence ───────────────────────────
     const encoder = new TextEncoder();
-    const aiChunks = [];
 
     const passthroughStream = new ReadableStream({
       async start(controller) {
@@ -134,7 +134,6 @@ export async function onRequestPost({ request, data, env }) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            aiChunks.push(value);
             controller.enqueue(value);
           }
         } finally {
@@ -155,7 +154,7 @@ export async function onRequestPost({ request, data, env }) {
            VALUES (?, ?, 'ai', ?, ?)`
         ).bind(crypto.randomUUID(), threadIdToUse, fullText, aiTimestamp).run();
 
-        const outputTokens = Math.ceil(fullText.length / 4);
+        const outputTokens = estimateTokens(fullText);
         await logTokenUsage(env, user.id, 'chatbot', `Chat: ${characterId || 'unknown'}`, inputTokens, outputTokens);
       } catch (e) {
         console.error('persist ai message failed:', e);
@@ -220,9 +219,3 @@ export async function onRequestGet({ request, data, env }) {
   }
 }
 
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}

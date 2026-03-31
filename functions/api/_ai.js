@@ -1,14 +1,16 @@
+import { estimateTokens, estimateMessagesTokens } from './_utils.js';
+
 /**
  * Shared AI Service — van-hien-ai-edu
  *
- * Model routing by feature:
+ * Model routing by feature (CF Workers AI — March 2026):
  *
- * Feature         | Model                            | Use case
- * ----------------|----------------------------------|------------------------------
- * chatbot         | @cf/meta/llama-3.1-8b-instruct  | Character chat (streaming)
- * grading         | @cf/agent/llama-4-llama-4-scout-fw| Essay rubric scoring
- * exam_gen       | @cf/qwen/qwen2.5-72b-instruct    | Exam question generation
- * multiverse     | @cf/Claude-ai/Claude-r1-distill-qwen-7b | Storyline branching
+ * Feature         | Model                                   | Use case
+ * ----------------|-----------------------------------------|------------------------------
+ * chatbot         | @cf/meta-llama/llama-3.1-8b-instruct  | Character chat (streaming)
+ * grading         | @cf/google/gemma-3-12b-it              | Essay rubric scoring
+ * exam_gen       | @cf/qwen/qwen2.5-coder-32b-instruct    | Exam question generation
+ * multiverse     | @cf/qwen/qwq-32b                        | Storyline branching
  *
  * Falls back to stub text if AI binding is not configured.
  */
@@ -43,10 +45,8 @@ export function aiStream(model, opts = {}, feature = 'unknown') {
     : [];
   const allMessages = [...systemMsg, ...messages];
 
-  // Estimate input tokens: ~4 chars/token
-  const inputTokens = Math.ceil(
-    allMessages.map(m => m.content).join('\n').length / 4
-  );
+  // Estimate input tokens
+  const inputTokens = estimateMessagesTokens(allMessages);
 
   /** @type {string[]} */
   const chunks = [];
@@ -107,9 +107,7 @@ export async function aiCall(model, opts = {}) {
     ? [{ role: 'system', content: systemPrompt }]
     : [];
   const allMessages = [...systemMsg, ...messages];
-  const inputTokens = Math.ceil(
-    allMessages.map(m => m.content).join('\n').length / 4
-  );
+  const inputTokens = estimateMessagesTokens(allMessages);
 
   try {
     const ai = globalThis[AI_BINDING];
@@ -129,7 +127,7 @@ export async function aiCall(model, opts = {}) {
     });
 
     const text = result?.response?.text ?? '';
-    const outputTokens = Math.ceil(text.length / 4);
+    const outputTokens = estimateTokens(text);
 
     return { text, inputTokens, outputTokens };
   } catch (err) {

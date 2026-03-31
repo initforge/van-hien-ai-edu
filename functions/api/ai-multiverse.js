@@ -8,6 +8,7 @@
  */
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
+import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -51,20 +52,18 @@ export async function onRequestPost({ request, env, data }) {
 
     // ── Call AI ─────────────────────────────────────────────────────────
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
-      '@cf/qwen/qwen2.5-72b-instruct',
+      '@cf/qwen/qwq-32b',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.85 }
     );
 
-    // Parse JSON
-    let storyline = { title: `Nhánh mới — ${work.title}`, content: aiResponse, moral: '' };
-    try {
-      const match = aiResponse.match(/\{[\s\S]*\}/);
-      if (match) {
-        storyline = { ...storyline, ...JSON.parse(match[0]) };
-      }
-    } catch {
-      // Use raw response
-    }
+    // Parse JSON (graceful fallback)
+    const { parsed } = parseAiJson(aiResponse, null);
+    const storyline = {
+      title: `Nhánh mới — ${work.title}`,
+      content: aiResponse,
+      moral: '',
+      ...( /** @type {any} */ (parsed) || {}),
+    };
 
     // ── Save to DB ──────────────────────────────────────────────────────
     const storylineId = crypto.randomUUID();
@@ -98,6 +97,3 @@ export async function onRequestPost({ request, env, data }) {
   }
 }
 
-function jsonError(message, status) {
-  return new Response(JSON.stringify({ error: message }), { status, headers: { 'Content-Type': 'application/json' } });
-}

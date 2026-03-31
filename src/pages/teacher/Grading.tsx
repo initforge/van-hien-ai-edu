@@ -237,16 +237,16 @@ export default function GradingPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        s.status === "returned" ? "bg-green-100 text-green-700" :
-                        s.status === "ai_graded" ? "bg-blue-100 text-blue-700" :
+                        s.status === SUBMISSION_STATUS.RETURNED ? "bg-green-100 text-green-700" :
+                        s.status === SUBMISSION_STATUS.AI_GRADED ? "bg-blue-100 text-blue-700" :
                         "bg-amber-100 text-amber-700"
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
-                          s.status === "returned" ? "bg-green-500" :
-                          s.status === "ai_graded" ? "bg-blue-500" :
+                          s.status === SUBMISSION_STATUS.RETURNED ? "bg-green-500" :
+                          s.status === SUBMISSION_STATUS.AI_GRADED ? "bg-blue-500" :
                           "bg-amber-500"
                         }`}></span>
-                        {s.status === "returned" ? "Đã trả" : s.status === "ai_graded" ? "AI đã chấm" : "Chờ chấm"}
+                        {s.status === SUBMISSION_STATUS.RETURNED ? "Đã trả" : s.status === SUBMISSION_STATUS.AI_GRADED ? "AI đã chấm" : "Chờ chấm"}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center font-bold text-primary text-lg">{s.teacherScore || s.aiScore || "—"}</td>
@@ -255,7 +255,7 @@ export default function GradingPage() {
                         onClick={(e) => { e.stopPropagation(); setSelectedStudent(s.id); setStep("grading"); }}
                         className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-container transition-colors"
                       >
-                        {s.status === "returned" ? "Xem lại" : "Chấm bài"}
+                        {s.status === SUBMISSION_STATUS.RETURNED ? "Xem lại" : "Chấm bài"}
                       </button>
                     </td>
                   </tr>
@@ -321,10 +321,10 @@ export default function GradingPage() {
                       className="flex items-center gap-1.5 bg-secondary hover:bg-secondary/90 disabled:opacity-50 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
                     >
                       <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                      {aiGrading ? 'Đang chấm...' : student.status === 'returned' ? 'Đã chấm rồi' : 'Chấm bằng AI'}
+                      {aiGrading ? 'Đang chấm...' : student.status === SUBMISSION_STATUS.RETURNED ? 'Đã chấm rồi' : 'Chấm bằng AI'}
                     </button>
                     <span className="bg-tertiary/10 text-tertiary px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                      {student.status === "returned" ? "Đã trả bài" : "Đang chờ GV duyệt"}
+                      {student.status === SUBMISSION_STATUS.RETURNED ? "Đã trả bài" : "Đang chờ GV duyệt"}
                     </span>
                   </div>
                 </div>
