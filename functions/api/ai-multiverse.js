@@ -1,7 +1,7 @@
 /**
  * POST /api/ai/multiverse — AI multiverse / what-if storyline generation
  *
- * Uses @cf/Claude-ai/Claude-r1-distill-qwen-7b for creative narrative branching.
+ * Uses @cf/qwen/qwq-32b for creative narrative branching.
  * Generates an alternate storyline based on a "branch point" in the original work.
  *
  * Body: { workId, branchPoint }
@@ -9,6 +9,7 @@
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
+import { WORK_STATUS } from './_constants.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -25,8 +26,8 @@ export async function onRequestPost({ request, env, data }) {
     // ── Load work ──────────────────────────────────────────────────────
     const work = await env.DB.prepare(
       `SELECT id, title, author, content FROM works
-       WHERE id = ? AND status = 'analyzed' LIMIT 1`
-    ).bind(workId).first();
+       WHERE id = ? AND status = ? LIMIT 1`
+    ).bind(workId, WORK_STATUS.ANALYZED).first();
 
     if (!work) return jsonError('Không tìm thấy tác phẩm.', 404);
 

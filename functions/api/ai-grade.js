@@ -59,7 +59,6 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const answerMap = new Map(answers.results.map(a => [a.questionId, a.content || '']));
-    const totalPoints = questions.results.reduce((s, q) => s + (q.points || 0), 0);
 
     // ── Build grading prompt ────────────────────────────────────────────────
     const passageContext = submission.passage

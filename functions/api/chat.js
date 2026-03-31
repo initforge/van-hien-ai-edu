@@ -2,6 +2,7 @@ import { checkRateLimit } from './_rateLimit.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { aiStream } from './_ai.js';
 import { jsonError, estimateTokens } from './_utils.js';
+import { WORK_STATUS } from './_constants.js';
 
 // ─── System prompts by character ──────────────────────────────────────────────
 
@@ -79,8 +80,8 @@ export async function onRequestPost({ request, data, env }) {
         const studentChar = await env.DB.prepare(
           `SELECT c.id FROM characters c
            JOIN works w ON c.work_id = w.id
-           WHERE c.name = ? AND c.active = 1 AND w.status = 'analyzed' LIMIT 1`
-        ).bind(characterId).first();
+           WHERE c.name = ? AND c.active = 1 AND w.status = ? LIMIT 1`
+        ).bind(characterId, WORK_STATUS.ANALYZED).first();
         authorized = !!studentChar;
       }
 
@@ -124,24 +125,9 @@ export async function onRequestPost({ request, data, env }) {
         temperature: 0.8,
       }, 'chatbot');
 
-    // ── Pipe AI chunks + buffer for DB persistence ───────────────────────────
-    const encoder = new TextEncoder();
-
-    const passthroughStream = new ReadableStream({
-      async start(controller) {
-        const reader = aiStreamResp.getReader();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            controller.enqueue(value);
-          }
-        } finally {
-          reader.releaseLock();
-        }
-        controller.close();
-      },
-    });
+    // ── Split stream: HTTP response + DB persistence ─────────────────────────
+    // Use tee() to avoid double-copying chunks through a wrapper ReadableStream.
+    const [forResponse, _forPersistence] = aiStreamResp.tee();
 
     // ── After stream completes: persist AI reply to DB ──────────────────────
     // Detached — non-blocking. Errors logged but don't affect the HTTP response.
@@ -163,7 +149,7 @@ export async function onRequestPost({ request, data, env }) {
       console.error('AI response unavailable:', err);
     });
 
-    return new Response(passthroughStream, {
+    return new Response(forResponse, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',

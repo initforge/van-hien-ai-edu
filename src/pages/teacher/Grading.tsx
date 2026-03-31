@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 
 import useSWR from 'swr';
 import { RUBRIC_DEFAULT } from '../../constants/grading';
@@ -88,8 +88,18 @@ export default function GradingPage() {
     }
   };
 
-  const exams = selectedClass ? EXAMS.filter((e) => e.classId != null && e.classId === selectedClass) : [];
-  const students = selectedExam ? SUBMISSIONS.filter((s) => s.examId === selectedExam) : [];
+  const exams = useMemo(
+    () => selectedClass ? EXAMS.filter((e) => e.classId != null && e.classId === selectedClass) : [],
+    [selectedClass, EXAMS]
+  );
+  const students = useMemo(
+    () => selectedExam ? SUBMISSIONS.filter((s) => s.examId === selectedExam) : [],
+    [selectedExam, SUBMISSIONS]
+  );
+
+  const pendingCount = useMemo(() => students.filter(s => s.status === SUBMISSION_STATUS.PENDING).length, [students]);
+  const aiGradedCount = useMemo(() => students.filter(s => s.status === SUBMISSION_STATUS.AI_GRADED).length, [students]);
+  const returnedCount = useMemo(() => students.filter(s => s.status === SUBMISSION_STATUS.RETURNED).length, [students]);
   const student = students.find((s) => s.id === selectedStudent);
 
   return (
@@ -204,13 +214,13 @@ export default function GradingPage() {
           <div className="flex gap-4 mb-8 text-sm">
             <button className="px-4 py-2 bg-primary text-white rounded-full font-bold">Tất cả ({students.length})</button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              Chờ chấm ({students.filter(s => s.status === SUBMISSION_STATUS.PENDING).length})
+              Chờ chấm ({pendingCount})
             </button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              AI đã chấm ({students.filter(s => s.status === SUBMISSION_STATUS.AI_GRADED).length})
+              AI đã chấm ({aiGradedCount})
             </button>
             <button className="px-4 py-2 bg-white border border-outline-variant/30 rounded-full text-slate-500 hover:text-primary transition-colors">
-              Đã trả ({students.filter(s => s.status === SUBMISSION_STATUS.RETURNED).length})
+              Đã trả ({returnedCount})
             </button>
           </div>
 
@@ -376,7 +386,7 @@ export default function GradingPage() {
                   <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold">NHẬN XÉT TỪ AI</label>
                   <div className="p-6 bg-secondary/5 border-l-4 border-secondary rounded-r-xl italic text-[#005142] leading-relaxed relative">
                     <span className="material-symbols-outlined absolute top-4 right-4 text-secondary/20 text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>format_quote</span>
-                    &quot;Bài viết có ý tưởng tốt, phân tích được nội tâm Lão Hạc. Cần bổ sung thêm dẫn chứng cụ thể.&quot;
+                    &quot;{aiResult?.summary || 'Chưa có nhận xét. Nhấn "Chấm bằng AI" để phân tích bài viết.'}&quot;
                   </div>
                 </div>
 
