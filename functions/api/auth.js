@@ -106,12 +106,12 @@ export async function onRequestDelete({ request, env }) {
   // Extract and revoke the current token
   const cookieHeader = request.headers.get('Cookie') || '';
   const tokenMatch = cookieHeader.match(/token=([^;]+)/);
-  if (tokenMatch && env.CACHE) {
+  if (tokenMatch && env.VANHIEN_KV) {
     try {
       // Verify to get jti, then revoke
       const { payload } = await jwtVerify(tokenMatch[1], new TextEncoder().encode(env.JWT_SECRET));
       if (payload.jti) {
-        await revokeToken(env.CACHE, payload.jti, 86400);
+        await revokeToken(env.VANHIEN_KV, payload.jti, 86400);
       }
     } catch {
       // Invalid token already — nothing to revoke

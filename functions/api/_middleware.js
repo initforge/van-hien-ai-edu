@@ -42,8 +42,8 @@ export async function onRequest(context) {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
 
     // Check if token has been revoked (logout)
-    if (payload.jti && env.CACHE) {
-      const revoked = await isTokenRevoked(env.CACHE, payload.jti);
+    if (payload.jti && env.VANHIEN_KV) {
+      const revoked = await isTokenRevoked(env.VANHIEN_KV, payload.jti);
       if (revoked) {
         return new Response(JSON.stringify({ error: "Token has been revoked" }), { status: 401 });
       }

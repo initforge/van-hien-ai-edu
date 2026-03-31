@@ -1,0 +1,21 @@
+# Van-Hiên — Wrangler Production Config
+# Deploy: npx wrangler deploy --config wrangler.prod.toml
+# Namespace IDs — update these after creating production namespaces on Cloudflare
+
+name = "vanhien-api"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-09-23"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "vanhien-db"
+# TODO: create prod D1 → npx wrangler d1 create vanhien-db --env production
+# paste prod database_id below
+database_id = "REPLACE_WITH_PROD_D1_ID"
+
+[[kv_namespaces]]
+binding = "VANHIEN_KV"
+id = "1527de16154a4bf3a1746d541f91a082"
+# TODO: create prod KV → npx wrangler kv:namespace create VANHIEN_KV --env production
+# paste prod namespace id below
+id = "REPLACE_WITH_PROD_KV_ID"

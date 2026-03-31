@@ -1,13 +1,13 @@
 /**
  * KV Service — van-hien-ai-edu
  *
- * Namespace: VH_KV (dedicated)
+ * Namespace: VANHIEN_KV (dedicated)
  * Prefix: vh: (project isolation)
  *
  * Usage:
  *   import { kvGet, kvSet, kvDelete, rateLimit } from './_kv.js';
- *   const cached = await kvGet(env.CACHE, 'user:42:profile');
- *   const allowed = await rateLimit(env.CACHE, user.id, 10, 60);
+ *   const cached = await kvGet(env.VANHIEN_KV, 'user:42:profile');
+ *   const allowed = await rateLimit(env.VANHIEN_KV, user.id, 10, 60);
  */
 
 const PREFIX = 'vh:';

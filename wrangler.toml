@@ -11,5 +11,5 @@ database_id = "de087f62-62c6-4896-8646-f70aa9fcbc72"
 # DEV: a06e46fc32b34eb487df25e57d3a4dd5  (placeholder — update after namespace create)
 # PROD: create via: npx wrangler kv namespace create VANHIEN_KV
 [[kv_namespaces]]
-binding = "CACHE"
+binding = "VANHIEN_KV"
 id = "1527de16154a4bf3a1746d541f91a082"

@@ -14,5 +14,5 @@ import { rateLimit } from './_kv.js';
  * @returns {Promise<{ allowed: boolean, remaining: number, resetIn: number }>}
  */
 export async function checkRateLimit(userId, maxRequests = 10, env = {}) {
-  return rateLimit(env.CACHE, String(userId), maxRequests, 60);
+  return rateLimit(env.VANHIEN_KV, String(userId), maxRequests, 60);
 }
