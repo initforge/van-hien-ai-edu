@@ -26,3 +26,7 @@ dist-ssr
 # Cloudflare
 .wrangler
 .dev.vars
+.env
+!.env.example
+api/.wrangler/
+d1_test_db/

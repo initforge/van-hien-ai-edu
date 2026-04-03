@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +34,8 @@ export default function AdminLoginPage() {
       }
 
       if (data.redirect) {
+        // Refresh AuthContext so ProtectedRoute sees the logged-in user immediately
+        await refreshUser();
         navigate(data.redirect);
       }
     } catch (e: unknown) {

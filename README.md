@@ -21,7 +21,7 @@ van-hien-ai-edu/
 │   ├── pages/
 │   │   ├── Homepage.tsx
 │   │   ├── LoginPage.tsx
-│   │   ├── ExamRoomPage.tsx
+│   │   ├── AdminLoginPage.tsx
 │   │   ├── student/          # Student pages
 │   │   │   ├── StudentDashboard.tsx
 │   │   │   ├── StudentExamRoom.tsx
@@ -39,9 +39,12 @@ van-hien-ai-edu/
 │   │       ├── AIReview.tsx
 │   │       └── TeacherMultiverse.tsx
 │   ├── components/
-│   │   ├── layout/
-│   │   └── ui/
-│   ├── constants/              # Shared data (storylines, grading rubric, AI review)
+│   │   ├── layout/            # StudentLayout, TeacherLayout, AdminLayout, Sidebars
+│   │   └── ErrorBoundary.tsx
+│   ├── lib/                   # Shared utilities
+│   │   ├── fetcher.ts         # SWR fetcher + formatDate
+│   │   └── utils.ts           # formatTimeAgo, formatLogTime, FILL_SETTINGS, status constants
+│   ├── constants/             # Shared data (storylines, grading rubric, AI review)
 │   │   ├── storylines.ts
 │   │   ├── grading.ts
 │   │   └── aiReview.ts
@@ -139,10 +142,12 @@ wrangler d1 migrations apply vanhien-db --remote
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| 1 | Grading UI ignores teacher input (hardcoded 8.5) | P0 | ✅ Fixed |
-| 2 | Exam answers not persisted to DB | P0 | ✅ Fixed |
-| 3 | Hardcoded studentId in ExamDetail | P0 | ✅ Fixed |
-| 4 | E2E test credentials mismatch | P1 | ✅ Fixed |
-| 5 | E2E utils write to production DB | P1 | ✅ Fixed |
+| 1 | chat.js characterId from client (MVP stub) | P1 | Known |
+| 2 | AuthContext logout: JWT client-side only, no server invalidation | P2 | Known |
+| 3 | N+1 INSERT per answer in submissions.js | P0 | Pending |
+| 4 | N+1 DB INSERT every 8 words in chat.js streaming | P0 | Pending |
+| 5 | Missing auth on GET /api/classes | P1 | Pending |
+| 6 | No pagination on 7 list endpoints | P1 | Pending |
+| 7 | Error responses cached with profile:'dynamic' | P1 | Pending |
 
-> See `.claude/memory/` for full audit reports.
+> See `.claude/memory/audit-20260330.json` for full audit.

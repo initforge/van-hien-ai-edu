@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +34,7 @@ export default function LoginPage() {
       }
 
       if (data.redirect) {
+        await refreshUser();
         navigate(data.redirect);
       }
     } catch (e: unknown) {

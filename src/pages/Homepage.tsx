@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { Link } from "react-router-dom";
 import { AnimateOnScroll } from "../components/AnimateOnScroll";
 
@@ -65,8 +65,8 @@ export default function Homepage() {
             <AnimateOnScroll animation="fade-left" delay={200} duration={1000}>
               <div className="relative">
                 <div className="bg-white/70 backdrop-blur-md border border-[#326286]/15 p-4 rounded-3xl rotate-2 relative z-20 hover:rotate-0 transition-transform duration-700">
-                  <div className="rounded-2xl w-full h-[500px] bg-gradient-to-br from-primary/10 via-secondary/5 to-[#C9A84C]/10 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[120px] text-primary/20">auto_stories</span>
+                  <div className="rounded-2xl w-full h-[500px] bg-gradient-to-br from-primary/10 via-secondary/5 to-[#C9A84C]/10 flex items-center justify-center overflow-hidden">
+                    <img src="/images/hero.png" alt="Hero Illustration" className="w-full h-full object-cover" />
                   </div>
                   <div className="absolute -bottom-6 -left-6 bg-white/70 backdrop-blur-md border border-[#326286]/15 p-6 rounded-2xl shadow-xl max-w-xs animate-float-gentle">
                     <div className="flex items-center gap-3 mb-2">
