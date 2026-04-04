@@ -26,15 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchUser = async () => {
     try {
-      const res = await fetch('/api/me');
-      if (res.ok) {
+      const res = await fetch('/api/me', { credentials: 'include' });
+      if (res.status === 401) {
+        // Explicit 401 = logged out
+        setUser(null);
+      } else if (res.ok) {
         const data = await res.json();
         setUser(data.user);
-      } else {
-        setUser(null);
       }
-    } catch (e) {
-      setUser(null);
+      // Any other error (network, 500, etc.) = keep current user state
+    } catch {
+      // Network error = don't log out user, keep current state
     } finally {
       setIsLoading(false);
     }
@@ -46,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth', { method: 'DELETE' });
+      await fetch('/api/auth', { method: 'DELETE', credentials: 'include' });
     } catch (_) { /* best-effort */ }
     document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     setUser(null);
@@ -70,23 +72,36 @@ export function useAuth() {
 
 export function ProtectedRoute({ children, allowedRole }: { children: React.ReactNode; allowedRole?: 'teacher' | 'student' | 'admin' }) {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center bg-surface"><div className="animate-pulse-soft text-primary font-headline">Đang xác thực...</div></div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="text-center">
+          <span className="material-symbols-outlined text-5xl text-primary animate-spin block mb-3">progress_activity</span>
+          <p className="text-primary font-headline">Đang xác thực...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
-    return <div className="min-h-screen flex items-center justify-center bg-surface flex-col gap-4">
-      <h1 className="text-xl font-headline text-error">Phiên đăng nhập đã hết hạn</h1>
-      <a href="/" className="text-primary hover:underline">Quay lại trang chủ</a>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface flex-col gap-4">
+        <span className="material-symbols-outlined text-5xl text-error/60" style={{ fontVariationSettings: "'FILL' 1" }}>lock</span>
+        <h1 className="text-xl font-headline text-error">Phiên đăng nhập đã hết hạn</h1>
+        <a href="/" className="text-primary hover:underline">Quay lại trang chủ</a>
+      </div>
+    );
   }
 
   if (allowedRole && user.role !== allowedRole) {
-    return <div className="min-h-screen flex items-center justify-center bg-surface flex-col gap-4">
-      <h1 className="text-xl font-headline text-error">Bạn không có quyền truy cập trang này</h1>
-      <a href="/" className="text-primary hover:underline">Quay lại trang chủ</a>
-    </div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface flex-col gap-4">
+        <span className="material-symbols-outlined text-5xl text-error/60" style={{ fontVariationSettings: "'FILL' 1" }}>gpp_bad</span>
+        <h1 className="text-xl font-headline text-error">Bạn không có quyền truy cập trang này</h1>
+        <a href="/" className="text-primary hover:underline">Quay lại trang chủ</a>
+      </div>
+    );
   }
 
   return <>{children}</>;

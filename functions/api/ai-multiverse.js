@@ -14,7 +14,7 @@ import { WORK_STATUS } from './_constants.js';
 export async function onRequestPost({ request, env, data }) {
   try {
     const user = data?.user;
-    if (!user || user.role !== 'student') {
+    if (!user || (user.role !== 'student' && user.role !== 'teacher')) {
       return jsonError('Unauthorized', 401);
     }
 
@@ -71,9 +71,9 @@ export async function onRequestPost({ request, env, data }) {
     const now = new Date().toISOString();
 
     await env.DB.prepare(
-      `INSERT INTO storylines (id, work_id, student_id, branch_point, title, content, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(storylineId, workId, user.id, branchPoint, storyline.title || '', storyline.content || aiResponse, now).run();
+      `INSERT INTO storylines (id, work_id, student_id, branch_point, title, content, moral, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'published', ?)`
+    ).bind(storylineId, workId, user.id, branchPoint, storyline.title || '', storyline.content || aiResponse, storyline.moral || '', now).run();
 
     // Log token usage
     await logTokenUsage(env, user.id, 'multiverse',

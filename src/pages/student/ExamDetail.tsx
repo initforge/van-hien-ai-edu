@@ -5,13 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { fetcher } from '../../lib/fetcher';
 import type { ExamDetail } from '../../types/api';
 
-// Hardcoded passage for fallback when no API data
-const FALLBACK_PASSAGE = [
-  "Mặt lão đột nhiên co rúm lại. Những vết nhăn xô lại với nhau, ép cho nước mắt chảy ra. Cái đầu lão ngoẹo về một bên và cái miệng móm mém của lão mếu như con nít. Lão hu hu khóc...",
-  "— Khốn nạn... Ông giáo ơi! Nó có biết gì đâu! Nó kiến tôi đi gọi về thì nó vẫy đuôi mừng. Tôi cho nó ăn cơm xong thì thằng Mục, thằng Xiên, hai thằng chúng nó nấp sẵn ở trong nhà, chỉ việc xông ra mà tóm lấy nó. Nó đang ăn thì thằng Mục tóm được hai cẳng sau của nó dốc ngược nó lên...",
-  "Này! Ông giáo ạ! Cái giống nó cũng khôn! Nó cứ làm in như nó trách tôi; nó bảo tôi rằng: \"A! Lão già tệ lắm! Tôi ăn ở với lão như thế mà lão xử với tôi như thế này à?\".",
-  "Tôi già bằng này tuổi đầu rồi còn đi đánh lừa một con chó, nó không ngờ tôi nỡ tâm lừa nó!",
-];
+
 
 function formatTimer(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -136,27 +130,33 @@ export default function ExamDetailPage() {
   };
 
   // Progress
-  const totalQuestions = questions.length > 0 ? questions.length : 5; // fallback count for hardcoded
-  const answeredCount = (() => {
-    if (questions.length > 0) {
-      return questions.filter((q) => {
-        const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${q.id}"]`);
-        return el && el.value.trim().length > 0;
-      }).length;
-    }
-    return Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]'))
-      .filter(el => el.value.trim().length > 0).length;
-  })();
-  const progressPct = Math.round((answeredCount / totalQuestions) * 100);
+  const totalQuestions = questions.length;
+  const answeredCount = questions.filter((q) => {
+    const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-answer-id="${q.id}"]`);
+    return el && el.value.trim().length > 0;
+  }).length;
+  const progressPct = totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
 
   const passageContent = exam?.passage
     ? exam.passage.split('\n').filter((p: string) => p.trim().length > 0)
-    : FALLBACK_PASSAGE;
+    : [];
 
   const examTitle = exam?.title || 'Đang tải...';
   const examDuration = exam?.duration ? `${exam.duration} phút` : '';
-  const workTitle = exam?.workTitle || 'Lão Hạc';
-  const author = exam?.author || 'Nam Cao';
+  const workTitle = exam?.workTitle || '';
+  const author = exam?.author || '';
+
+  // Loading state: show spinner while SWR fetches
+  if (!data) {
+    return (
+      <div className="bg-surface min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <span className="material-symbols-outlined text-6xl text-primary animate-spin">progress_activity</span>
+          <p className="font-headline text-lg text-slate-400">Đang tải đề thi...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-surface min-h-screen text-on-surface">
@@ -201,9 +201,13 @@ export default function ExamDetailPage() {
               <p className="text-sm text-on-surface-variant/80 italic mt-1 font-medium">— {author}</p>
             </div>
             <article className="font-headline text-lg leading-[1.8] text-on-surface space-y-6 relative z-10">
-              {passageContent.map((para: string, i: number) => (
-                <p key={i}>{para}</p>
-              ))}
+              {passageContent.length > 0 ? (
+                passageContent.map((para: string, i: number) => (
+                  <p key={i}>{para}</p>
+                ))
+              ) : (
+                <p className="italic text-slate-400">Không có đoạn trích cho đề thi này.</p>
+              )}
             </article>
             <div className="mt-12 pt-8 border-t border-outline-variant/20 relative z-10">
               <div className="relative w-full h-64 rounded-xl overflow-hidden bg-gradient-to-br from-primary/5 to-secondary/5 flex items-center justify-center">
@@ -242,94 +246,20 @@ export default function ExamDetailPage() {
                   </div>
                 ))
               ) : (
-                <>
-                  {/* Fallback hardcoded questions */}
-                  <div className="group">
-                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 1 (0.5 điểm)</label>
-                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Phương thức biểu đạt chính được sử dụng trong đoạn trích trên là gì?</p>
-                    <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" data-answer-id="q1" />
-                  </div>
-                  <div className="group">
-                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 2 (0.5 điểm)</label>
-                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Tìm những từ ngữ miêu tả ngoại hình và cử chỉ của Lão Hạc khi kể chuyện bán chó.</p>
-                    <input className="w-full bg-transparent border-0 border-b border-outline-variant/40 focus:border-primary focus:ring-0 transition-all py-3 px-0 font-headline text-lg placeholder:italic placeholder:text-slate-400" placeholder="Nhập câu trả lời của bạn..." type="text" data-answer-id="q2" />
-                  </div>
-                  <div className="group">
-                    <label className="block text-xs font-bold text-secondary uppercase tracking-widest mb-3">Câu 3 (2.0 điểm)</label>
-                    <p className="font-headline text-xl mb-4 text-on-surface font-semibold">Vì sao Lão Hạc lại cảm thấy mình "nỡ tâm lừa" một con chó? Phân tích diễn biến tâm lý của nhân vật.</p>
-                    <textarea className="w-full bg-white/50 backdrop-blur-sm border border-outline-variant/30 rounded-xl focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all p-6 font-headline text-lg leading-relaxed shadow-inner placeholder:italic placeholder:text-slate-400" placeholder="Viết phân tích của bạn ở đây..." rows={6} data-answer-id="q3"></textarea>
-                  </div>
-                </>
+                <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                  <span className="material-symbols-outlined text-6xl text-outline-variant">error_outline</span>
+                  <p className="font-headline text-xl text-on-surface font-semibold">
+                    Không tìm thấy đề thi hoặc đề chưa có câu hỏi.
+                  </p>
+                  <p className="text-sm text-slate-400">Vui lòng liên hệ giáo viên để được hỗ trợ.</p>
+                  <Link
+                    to="/student/dashboard"
+                    className="mt-4 px-6 py-3 bg-primary/10 text-primary rounded-lg font-bold hover:bg-primary/20 transition-colors"
+                  >
+                    Quay về dashboard
+                  </Link>
+                </div>
               )}
-            </div>
-          </div>
-        </section>
-
-        {/* Section 2: Essay Writing */}
-        <section className="max-w-4xl mx-auto space-y-16 pb-32">
-          <div className="text-center space-y-3">
-            <span className="text-[10px] font-bold tracking-[0.3em] text-primary/70 uppercase">Phần II: Làm văn (7.0 điểm)</span>
-            <div className="h-1 w-12 bg-tertiary/30 mx-auto rounded-full"></div>
-          </div>
-
-          {/* Essay Question 1 */}
-          <div className="space-y-6">
-            <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-headline text-2xl font-bold text-primary">Câu 1 (2.0 điểm): Nghị luận xã hội</h3>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: 200 - 300</span>
-            </div>
-            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
-              Viết một đoạn văn ngắn bàn về ý nghĩa của lòng dũng cảm trong cuộc sống hiện đại.
-            </p>
-            <div className="relative group mt-4">
-              <div className="absolute -left-12 top-0 bottom-0 w-1 bg-surface-container-high group-focus-within:bg-secondary transition-colors rounded-full"></div>
-              <div className="bg-white/80 backdrop-blur-md border border-outline-variant/30 rounded-2xl shadow-sm p-8 min-h-[350px] focus-within:shadow-md transition-shadow">
-                <div className="flex gap-4 mb-6 pb-4 border-b border-outline-variant/10 text-slate-400">
-                  <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_bold</span>
-                  <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_italic</span>
-                  <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_list_bulleted</span>
-                  <div className="w-px h-6 bg-outline-variant/20"></div>
-                  <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_quote</span>
-                </div>
-                <textarea className="w-full h-full min-h-[250px] border-0 focus:ring-0 font-headline text-lg leading-[2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Bắt đầu viết bài luận của bạn..." data-answer-id="essay1"></textarea>
-              </div>
-            </div>
-          </div>
-
-          {/* Essay Question 2 */}
-          <div className="space-y-6">
-            <div className="flex justify-between items-end border-b border-outline-variant/20 pb-4">
-              <h3 className="font-headline text-2xl font-bold text-primary">Câu 2 (5.0 điểm): Nghị luận văn học</h3>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Số chữ gợi ý: &gt; 600</span>
-            </div>
-            <p className="font-headline text-xl text-on-surface leading-relaxed italic font-medium">
-              Phân tích giá trị nhân đạo của tác phẩm "Lão Hạc" qua nhân vật cùng tên.
-            </p>
-            <div className="relative group mt-4">
-              <div className="absolute -left-12 top-0 bottom-0 w-1 bg-surface-container-high group-focus-within:bg-primary transition-colors rounded-full"></div>
-              <div className="bg-white/90 backdrop-blur-xl border border-outline-variant/30 rounded-2xl shadow-sm p-8 min-h-[700px] focus-within:shadow-lg transition-shadow relative">
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10">
-                  <div className="flex gap-4 text-slate-400">
-                    <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_bold</span>
-                    <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_italic</span>
-                    <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">format_underlined</span>
-                    <div className="w-px h-6 bg-outline-variant/20"></div>
-                    <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">align_horizontal_left</span>
-                    <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors">align_horizontal_center</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest text-secondary uppercase bg-secondary/10 px-3 py-1.5 rounded cursor-pointer hover:bg-secondary/20 transition-colors">
-                    <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>edit_note</span>
-                    Chế độ tập trung
-                  </div>
-                </div>
-                <textarea className="w-full h-full min-h-[600px] border-0 focus:ring-0 font-headline text-lg leading-[2.2] p-0 bg-transparent resize-none placeholder:italic placeholder:text-slate-300" placeholder="Phân tích sâu về nhân vật Lão Hạc..." data-answer-id="essay2"></textarea>
-                <div className="absolute bottom-6 right-6 flex justify-end">
-                  <div className="bg-primary hover:bg-primary-container transition-colors backdrop-blur-md text-white px-5 py-2.5 rounded-full text-[10px] font-bold tracking-widest shadow-xl flex items-center gap-2 cursor-default">
-                    <span className="material-symbols-outlined text-[16px]">text_fields</span>
-                    SỐ CHỮ: 0
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </section>

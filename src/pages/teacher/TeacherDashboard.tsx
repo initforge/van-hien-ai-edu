@@ -1,11 +1,17 @@
-﻿import React from 'react';
+import React from 'react';
 import useSWR from 'swr';
 import { fetcher } from '../../lib/fetcher';
 import type { TeacherStats } from '../../types/api';
+import ActivityPopup from '../../components/activity/ActivityPopup';
 
 export default function TeacherDashboardPage() {
   const { data } = useSWR<TeacherStats>('/api/stats', fetcher);
-  const stats = data ?? { studentCount: 0, pendingGrading: 0, totalExams: 0, aiPending: 0 };
+  const stats = data ?? {
+    studentCount: 0, pendingGrading: 0, totalExams: 0,
+    upcomingExams: [], recentResults: [],
+  };
+
+  const [showActivity, setShowActivity] = React.useState(false);
 
   return (
     <>
@@ -13,10 +19,10 @@ export default function TeacherDashboardPage() {
         <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">Tổng quan</h2>
         <p className="text-outline mt-2 font-body italic">"Văn chương luyện cho ta những tình cảm ta không có, luyện cho ta những mối dây liên lạc ta chưa hề biết." — Hoài Thanh</p>
       </div>
-      
+
       {/* ROW 1: Stat Cards (Bento Style) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-        {/* Stat Card 1 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        {/* Card 1: Sĩ số */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 p-6 rounded-2xl relative overflow-hidden group hover:bg-white/90 transition-all duration-500 hover:shadow-lg hover:-translate-y-1" style={{ animation: "fadeIn 0.5s ease-out 0.1s both" }}>
           <div className="relative z-10">
             <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">Sĩ số</span>
@@ -24,26 +30,28 @@ export default function TeacherDashboardPage() {
               <span className="text-4xl font-headline font-bold text-primary">{stats.studentCount}</span>
               <span className="text-outline text-sm">học sinh</span>
             </div>
-            <p className="text-xs text-outline mt-2">Tổng số 4 lớp đang dạy</p>
           </div>
           <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">groups</span>
         </div>
-        {/* Stat Card 2 */}
+
+        {/* Card 2: Bài chờ chấm */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 p-6 rounded-2xl relative overflow-hidden group hover:bg-white/90 transition-all duration-500 hover:shadow-lg hover:-translate-y-1" style={{ animation: "fadeIn 0.5s ease-out 0.2s both" }}>
           <div className="relative z-10">
             <div className="flex justify-between items-start mb-4">
               <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em]">Bài chờ chấm</span>
-              <span className="bg-tertiary/10 text-tertiary text-[10px] font-bold px-2 py-1 rounded-full">{stats.pendingGrading > 0 ? `${stats.pendingGrading} MỚI` : 'HOÀN THÀNH'}</span>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${stats.pendingGrading > 0 ? 'bg-tertiary/10 text-tertiary' : 'bg-green-100 text-green-700'}`}>
+                {stats.pendingGrading > 0 ? `${stats.pendingGrading} MỚI` : 'HOÀN THÀNH'}
+              </span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-4xl font-headline font-bold text-primary">{stats.pendingGrading}</span>
               <span className="text-outline text-sm">bài nộp</span>
             </div>
-            <p className="text-xs text-outline mt-2">Hạn chót còn 2 ngày</p>
           </div>
           <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">history_edu</span>
         </div>
-        {/* Stat Card 3 */}
+
+        {/* Card 3: Đề đã tạo */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 p-6 rounded-2xl relative overflow-hidden group hover:bg-white/90 transition-all duration-500 hover:shadow-lg hover:-translate-y-1" style={{ animation: "fadeIn 0.5s ease-out 0.3s both" }}>
           <div className="relative z-10">
             <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">Đề đã tạo</span>
@@ -51,133 +59,221 @@ export default function TeacherDashboardPage() {
               <span className="text-4xl font-headline font-bold text-primary">{stats.totalExams}</span>
               <span className="text-outline text-sm">đề thi</span>
             </div>
-            <p className="text-xs text-outline mt-2">18 bài tập · 10 bài thi</p>
           </div>
           <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">quiz</span>
         </div>
-        {/* Stat Card 4 */}
+
+        {/* Card 4: Cảnh báo AI */}
         <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 p-6 rounded-2xl relative overflow-hidden group hover:bg-white/90 transition-all duration-500 hover:shadow-lg hover:-translate-y-1" style={{ animation: "fadeIn 0.5s ease-out 0.4s both" }}>
           <div className="relative z-10">
-            <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em] block mb-4">AI chờ duyệt</span>
+            <div className="flex justify-between items-start mb-4">
+              <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em]">Cảnh báo AI</span>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${(stats.warningCount ?? 0) > 0 ? 'bg-red-50 text-red-500' : 'bg-green-100 text-green-700'}`}>
+                {(stats.warningCount ?? 0) > 0 ? `${stats.warningCount} CẢNH BÁO` : 'TỐT'}
+              </span>
+            </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-headline font-bold text-primary">{String(stats.aiPending || 0).padStart(2, '0')}</span>
-              <span className="text-outline text-sm">nội dung</span>
+              <span className="text-4xl font-headline font-bold text-primary">{stats.warningCount ?? 0}</span>
+              <span className="text-outline text-sm">vấn đề</span>
             </div>
-            <p className="text-xs text-outline mt-2">Phân tích tác phẩm tự động</p>
           </div>
-          <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">psychology</span>
+          <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">gpp_maybe</span>
         </div>
       </div>
-      
-      {/* ROW 2: Activity and Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-10">
-        {/* Left: Recent Activity (60%) */}
-        <div className="lg:col-span-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-headline font-bold text-primary">Hoạt động gần đây</h3>
-            <button className="text-xs font-bold text-secondary tracking-widest uppercase hover:underline">Xem tất cả</button>
-          </div>
-          <div className="space-y-4">
-            {/* Activity Item */}
-            <div className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
-                <span className="material-symbols-outlined">check_circle</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Đã chấm xong bài: "Phân tích Vợ Chồng A Phủ"</p>
-                <p className="text-xs text-outline">Lớp 12C1 · 32 bài nộp</p>
-              </div>
-              <span className="text-[10px] text-outline font-medium">10 phút trước</span>
-            </div>
-            <div className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                <span className="material-symbols-outlined">auto_awesome</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">AI gợi ý đề minh họa mới</p>
-                <p className="text-xs text-outline">Chủ đề: Tự do và Trách nhiệm</p>
-              </div>
-              <span className="text-[10px] text-outline font-medium">1 giờ trước</span>
-            </div>
-            <div className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary">
-                <span className="material-symbols-outlined">person_add</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Học sinh mới tham gia hệ thống</p>
-                <p className="text-xs text-outline">Trần Hoàng M. · Lớp 10A2</p>
-              </div>
-              <span className="text-[10px] text-outline font-medium">3 giờ trước</span>
-            </div>
-            <div className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary">
-                <span className="material-symbols-outlined">rate_review</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Yêu cầu phúc khảo bài thi học kỳ</p>
-                <p className="text-xs text-outline">Lê Thúy H. · Lớp 11B3</p>
-              </div>
-              <span className="text-[10px] text-outline font-medium">Hôm qua</span>
-            </div>
-            <div className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 hover:shadow-sm transition-all">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                <span className="material-symbols-outlined">article</span>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold">Đã xuất bản giáo án tuần 12</p>
-                <p className="text-xs text-outline">Chủ đề: Văn học hiện thực 1930-1945</p>
-              </div>
-              <span className="text-[10px] text-outline font-medium">Hôm qua</span>
-            </div>
-          </div>
-        </div>
-        
-        {/* Right: AI Alerts (40%) */}
-        <div className="lg:col-span-4">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xl font-headline font-bold text-tertiary">Cảnh báo AI</h3>
-            <span className="material-symbols-outlined text-tertiary/40">emergency_home</span>
-          </div>
-          <div className="space-y-4">
-            {/* Alert Card 1 */}
-            <div className="p-5 bg-white border-l-4 border-l-tertiary rounded-xl shadow-sm hover:translate-x-1 transition-transform">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="material-symbols-outlined text-tertiary text-sm">trending_down</span>
-                <span className="text-[10px] font-bold text-tertiary tracking-widest uppercase">Giảm sút phong độ</span>
-              </div>
-              <p className="text-sm font-bold text-on-surface mb-1">Nguyễn Văn A - Lớp 9A</p>
-              <p className="text-xs text-outline leading-relaxed">Điểm giảm liên tục 3 bài gần nhất. AI dự đoán hổng kiến thức phần "Nghị luận xã hội".</p>
-              <button className="mt-4 text-[10px] font-bold text-primary hover:text-secondary uppercase tracking-wider flex items-center gap-1 transition-colors">
-                Gửi tài liệu ôn tập <span className="material-symbols-outlined text-sm">chevron_right</span>
-              </button>
-            </div>
-            {/* Alert Card 2 */}
-            <div className="p-5 bg-white border-l-4 border-l-tertiary rounded-xl shadow-sm hover:translate-x-1 transition-transform">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="material-symbols-outlined text-tertiary text-sm">report_problem</span>
-                <span className="text-[10px] font-bold text-tertiary tracking-widest uppercase">Phát hiện sao chép</span>
-              </div>
-              <p className="text-sm font-bold text-on-surface mb-1">Trần Thị B - Lớp 12C1</p>
-              <p className="text-xs text-outline leading-relaxed">Độ tương đồng 85% với bài làm năm 2022. Cần kiểm tra lại nội dung bài "Vợ nhặt".</p>
-              <div className="flex gap-2 mt-4">
-                <button className="px-3 py-1.5 bg-tertiary text-white text-[10px] font-bold rounded uppercase tracking-wider">Xem báo cáo</button>
-                <button className="px-3 py-1.5 border border-outline-variant text-outline text-[10px] font-bold rounded uppercase tracking-wider">Bỏ qua</button>
-              </div>
-            </div>
-            {/* Alert Card 3 */}
-            <div className="p-5 bg-white border-l-4 border-l-secondary rounded-xl shadow-sm hover:translate-x-1 transition-transform border-l-secondary">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="material-symbols-outlined text-secondary text-sm">lightbulb</span>
-                <span className="text-[10px] font-bold text-secondary tracking-widest uppercase">Tài năng mới</span>
-              </div>
-              <p className="text-sm font-bold text-on-surface mb-1">Hoàng Thu C - Lớp 11B</p>
-              <p className="text-xs text-outline leading-relaxed">Sử dụng ngôn ngữ thơ ca đặc sắc trong bài văn xuôi. Đề xuất bồi dưỡng đội tuyển HSG.</p>
-            </div>
-          </div>
-          
 
+      {/* Class Drill-down */}
+      <ClassDrillDown />
+
+      {/* ROW 2: Activity */}
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-headline font-bold text-primary">Hoạt động gần đây</h3>
+          <button
+            onClick={() => setShowActivity(true)}
+            className="text-xs font-bold text-secondary hover:underline tracking-widest uppercase"
+          >
+            Xem tất cả
+          </button>
         </div>
+        <ActivityFeedMini />
       </div>
+
+      {/* Popup */}
+      <ActivityPopup open={showActivity} onClose={() => setShowActivity(false)} />
     </>
   );
 }
+
+function ClassDrillDown() {
+  const [selected, setSelected] = React.useState<{ id: string; name: string; avgScore: number | null } | null>(null);
+  const { data, isLoading } = useSWR<{ data: { id: string; name: string; avgScore: number | null }[] }>('/api/teacher/classes', fetcher);
+  const classes = data?.data ?? [];
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {isLoading ? (
+          [1,2,3,4].map(i => (
+            <div key={i} className="h-24 bg-slate-100 rounded-2xl animate-pulse" />
+          ))
+        ) : classes.map(cls => (
+          <button
+            key={cls.id}
+            onClick={() => setSelected(selected?.id === cls.id ? null : cls)}
+            className={`text-left p-5 rounded-2xl border transition-all ${
+              selected?.id === cls.id
+                ? 'bg-primary text-white border-primary shadow-md'
+                : 'bg-white border-outline-variant/20 hover:border-primary/40 hover:shadow-md'
+            }`}
+          >
+            <p className={`font-headline font-bold ${selected?.id === cls.id ? 'text-white' : 'text-primary'}`}>
+              {cls.name}
+            </p>
+            <p className={`text-sm mt-1 ${selected?.id === cls.id ? 'text-white/70' : 'text-slate-400'}`}>
+              TB {cls.avgScore != null ? cls.avgScore.toFixed(1) : '—'} / 10
+            </p>
+          </button>
+        ))}
+      </div>
+
+      {selected && (
+        <ClassStudentList classId={selected.id} className={selected.name} />
+      )}
+    </div>
+  );
+}
+
+function ClassStudentList({ classId, className }: { classId: string; className: string }) {
+  const { data, isLoading } = useSWR<{ data: any[] }>(
+    `/api/teacher/students?classId=${classId}`, fetcher
+  );
+  const students = data?.data ?? [];
+
+  const gl = (score: number | null) =>
+    score == null ? null :
+    score < 5 ? { label: 'Yếu', color: 'text-red-500' } :
+    score < 6.5 ? { label: 'TB', color: 'text-amber-500' } :
+    score < 8 ? { label: 'Khá', color: 'text-blue-500' } :
+    score < 8.5 ? { label: 'Giỏi', color: 'text-green-600' } :
+    { label: 'XS', color: 'text-purple-600' };
+
+  return (
+    <div className="bg-white rounded-2xl border border-outline-variant/20 p-6 mb-8 animate-[fadeIn_0.2s_ease-out]">
+      <p className="font-headline font-bold text-primary mb-4">Học sinh lớp {className}</p>
+      {isLoading ? (
+        <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />)}</div>
+      ) : students.length === 0 ? (
+        <p className="text-slate-400 text-sm py-6 text-center">Chưa có học sinh nào trong lớp này.</p>
+      ) : (
+        students.map(s => {
+          const g = gl(s.avgScore ?? null);
+          return (
+            <div key={s.id} className="flex items-center justify-between py-3 border-b border-outline-variant/10 last:border-0">
+              <div>
+                <p className="text-sm font-semibold text-primary">{s.name}</p>
+                <p className="text-xs text-slate-400">{s.username}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="text-xs text-slate-400">{s.submissionCount ?? 0} bài</span>
+                {g && (
+                  <span className={`font-bold ${g.color}`}>
+                    {s.avgScore?.toFixed(1)} ({g.label})
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ─── Mini components (embedded, no extra files) ────────────────────────────────
+
+function formatTimeAgo(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffMin < 1) return 'Vừa xong';
+  if (diffMin < 60) return `${diffMin} phút trước`;
+  if (diffHour < 24) return `${diffHour} giờ trước`;
+  if (diffDay === 1) return 'Hôm qua';
+  return `${diffDay} ngày trước`;
+}
+
+const ACTION_META: Record<string, { icon: string; color: string; label: string }> = {
+  submission_submitted: { icon: 'upload_file', color: 'bg-tertiary/10 text-tertiary', label: 'nộp bài' },
+  exam_published: { icon: 'quiz', color: 'bg-primary/10 text-primary', label: 'đăng đề' },
+  ai_exam_approved: { icon: 'auto_awesome', color: 'bg-secondary/10 text-secondary', label: 'duyệt đề AI' },
+  ai_grading_accepted: { icon: 'check_circle', color: 'bg-secondary/10 text-secondary', label: 'chấm AI' },
+  student_joined: { icon: 'person_add', color: 'bg-primary/10 text-primary', label: 'HS tham gia' },
+  student_registered: { icon: 'how_to_reg', color: 'bg-tertiary/10 text-tertiary', label: 'HS đăng ký' },
+  grading_returned: { icon: 'send', color: 'bg-secondary/10 text-secondary', label: 'trả bài' },
+  storyline_created: { icon: 'auto_awesome_mosaic', color: 'bg-primary/10 text-primary', label: 'tạo nhánh' },
+};
+
+function ActivityFeedMini() {
+  const { data, isLoading } = useSWR('/api/activity?limit=3', fetcher, { revalidateOnFocus: false });
+  const activities = data?.activities ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl border border-outline-variant/10 animate-pulse">
+            <div className="w-10 h-10 rounded-full bg-surface-container-low" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-surface-container-low rounded w-3/4" />
+              <div className="h-3 bg-surface-container-low rounded w-1/2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!activities.length) {
+    return (
+      <div className="p-8 text-center text-outline rounded-xl border border-dashed border-outline-variant/30">
+        <span className="material-symbols-outlined text-4xl mb-2 opacity-30">history</span>
+        <p className="text-sm">Chưa có hoạt động nào.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {activities.map((item: { id: string; user_name: string; user_role: string; action: string; target_type?: string; details?: Record<string, string>; created_at: string }) => {
+        const meta = ACTION_META[item.action] || { icon: 'circle', color: 'bg-outline/10 text-outline', label: item.action };
+        const initials = (item.user_name || '?').split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+        const label = item.details?.examTitle || item.details?.title || item.target_type || '';
+        return (
+          <div key={item.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-container-low/50 transition-colors">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${item.user_role === 'teacher' ? 'bg-primary' : 'bg-secondary'}`}>
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-5 h-5 rounded flex items-center justify-center material-symbols-outlined text-xs ${meta.color}`}>
+                  {meta.icon}
+                </span>
+                <span className="text-sm font-medium text-on-surface truncate">
+                  {item.user_name}
+                </span>
+                <span className="text-xs text-outline">·</span>
+                <span className="text-xs text-secondary">{meta.label}</span>
+                {label && <><span className="text-xs text-outline">·</span><span className="text-xs text-outline truncate">{label}</span></>}
+              </div>
+            </div>
+            <span className="text-[10px] text-outline flex-shrink-0">{formatTimeAgo(item.created_at)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+

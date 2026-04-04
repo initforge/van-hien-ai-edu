@@ -1,4 +1,4 @@
-# Văn Học AI — Claude Code Conventions
+# Van Hoc AI — Claude Code Conventions
 
 ## Stack
 - Front: React 19 + Vite + Tailwind CSS v4
@@ -15,22 +15,33 @@ src/
   pages/
     Homepage.tsx / LoginPage.tsx / AdminLoginPage.tsx
     student/     — StudentDashboard, ExamDetail, CharacterChat, Multiverse, Results, Profile, StudentExamRoom
-    teacher/     — TeacherDashboard, Library, ExamBank, Grading, Characters, AIReview, TeacherMultiverse
+    teacher/     — TeacherDashboard, Library, ExamBank, Grading, Characters, AIReview, TeacherMultiverse, ClassManagement
     admin/       — AdminDashboard, AdminUsers, AdminClasses, AdminLogs
   components/
     layout/      — StudentLayout, TeacherLayout, AdminLayout, Sidebars
     ErrorBoundary.tsx
-  lib/           — fetcher.ts (SWR fetcher + formatDate), utils.ts (formatTimeAgo, formatLogTime, FILL_SETTINGS, status constants)
+  lib/           — fetcher.ts (SWR fetcher), utils.ts (formatTimeAgo, formatLogTime, formatDate, FILL_SETTINGS, status constants)
   contexts/      — AuthContext.tsx (JWT auth + ProtectedRoute)
+  types/         — api.ts (shared TypeScript interfaces)
 
-functions/api/  — Cloudflare Pages Functions (_middleware, _cache, _rateLimit, auth, me, chat, works, exams, submissions, classes, storylines, stats, hello, answers, characters, exam-detail, admin/users, admin/classes, admin/stats, admin/logs)
+functions/api/  — Cloudflare Pages Functions (_middleware, _cache, _rateLimit, auth, me, chat, works, exams, submissions, classes, storylines, stats, hello, answers, characters, exam-detail, admin/, teacher/, ai/, warnings/)
+  _utils.js      — jsonError, estimateTokens, parseAiJson
 
 database/
-  schema/       — D1 migrations 001-018 + 999-indexes.sql
-  seed/         — Seed data 001-008
+  schema/       — 01-users, 02-classes, 03-works, 04-grading, 05-exams, 06-activity, _teardown.sql
+  seed/         — 001-accounts, 002-passwords, 003-rubric
 
-db.legacy/      — Legacy flat files (DO NOT USE — kept for reference only)
-```
+# Deploy Database (clean rebuild)
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/_teardown.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/01-users.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/02-classes.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/03-works.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/04-grading.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/05-exams.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/schema/06-activity.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/seed/001-accounts.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/seed/002-passwords.sql
+npx wrangler d1 execute vanhien-db --remote --file=database/seed/003-rubric.sql
 
 ## Conventions
 
@@ -49,6 +60,7 @@ npm run build     # Production build
 ```
 
 ## Deploy
+
 ```
 Frontend: npx wrangler pages deploy dist/
 
@@ -65,26 +77,35 @@ D1 (prod):  npx wrangler d1 create vanhien-db --env production
 | # | File | Issue | Priority | Status |
 |---|------|-------|----------|--------|
 | 1 | chat.js | characterId from client, no allowlist (MVP stub) | P1 | Known |
-| 2 | logout (auth.js) | No server-side token revocation — revokeToken() ready in _kv.js, needs integration | P2 | Pending |
-| 3 | submissions.js:67 | SQL injection in batch INSERT (JSON.stringify in template) | P0 | **FIXED** — parameterized |
-| 4 | chat.js:56 | N+1 DB INSERT every 8 words during streaming | P0 | Pending |
-| 5 | classes.js:3 | GET /api/classes missing auth check | P1 | Pending |
-| 6 | 7 list endpoints | No pagination — unbounded result sets | P1 | Pending |
-| 7 | stats.js:54, submissions.js:21 | 5xx responses cached with profile:'dynamic' | P1 | **FIXED** — nocache |
-| 8 | 8 src files | ~42 `: any` usages — TypeScript errors | P1 | **FIXED** — src/types/api.ts |
+| 2 | logout (auth.js) | No server-side token revocation — revokeToken() ready in _kv.js, needs integration | P2 | **FIXED** |
+| 3 | submissions.js | SQL injection in batch INSERT | P0 | **FIXED** |
+| 4 | chat.js:56 | N+1 DB INSERT every 8 words during streaming | P0 | **FIXED** — fullTextPromise (persist after stream complete) |
+| 5 | classes.js | ~~GET /api/classes missing auth~~ | P1 | **FIXED** |
+| 6 | 7 list endpoints | No pagination — unbounded result sets | P1 | **FIXED** — all list endpoints now have LIMIT/OFFSET |
+| 7 | stats.js, submissions.js | 5xx responses cached with profile:'dynamic' | P1 | **FIXED** |
+| 8 | src files | ~42 `: any` usages | P1 | **FIXED** — reduced to ~4 remaining |
 | 9 | ExamDetail.tsx | Empty catch + missing useSWR import | P1 | **FIXED** |
+| 10 | works.js:79 | Always evaluates 'pending' (status never 'none') | P0 | **FIXED** |
+| 11 | teacher/stats-ai.js:74 | Wrong property `r.outputTokens` (should be `r.totalOutput`) | P1 | **FIXED** |
+| 12 | multiverse.js:144 | JSON.parse without try/catch | P1 | **FIXED** |
+| 13 | admin/classes.js | Orphaned submissions/questions on class delete | P1 | **FIXED** |
+| 14 | activity.js | 4 syntax errors (missing `)`, comma) — would crash runtime | P0 | **FIXED** |
+| 15 | warnings.js | 3 syntax errors (missing `)`, wrong table name `ai_wwords`) | P0 | **FIXED** |
+| 16 | works/[id]/*.js | Wrong import paths (`../../../api/_cache.js` → `../../_cache.js`) | P0 | **FIXED** |
 
 ## Recent Changes
 
+- 2026-04-04 (session 2): Full system verify + fix: 10 syntax/logic bugs fixed (activity.js: 4 errors, warnings.js: 3 errors, works/[id]/*.js: 2 wrong import paths, exams.js: duplicate validation, admin/logs.js: unused var, chat.js: N+1 already fixed in prior session); CLAUDE.md tech debt updated; deployed to Cloudflare Pages; all endpoints verified (401 auth working, JSON responses correct)
+- 2026-04-04 (session 1): Full rebuild — database re-organized into `database/schema/` (30 files: base+extend+indexes+teardown) + `database/seed/` (accounts + rubric only); Remote D1 dropped and re-deployed clean. Registration flow complete: LoginPage has DANG KY tab with name + ma lop, auto-enrolls via invite_code; invite_code auto-generated (8-char uppercase) on class creation; Admin/Teacher pages display invite code + copy + regenerate button; 3 syntax errors fixed (auth.js, _skillAssessments.js, rubric.js); TeacherMultiverse uses shared fetcher; dead formatTime removed from Characters.tsx; Results.tsx formatDate import fixed; App.tsx dead React import removed; route /exam-room -> /student/exam-room fixed; stats-ai.js wrong property name fixed; works.js always-pending status fixed; multiverse.js JSON.parse protected; admin/classes.js cascade delete corrected
 - 2026-03-31: Full review — TypeScript strict mode enabled; 60 TS errors fixed; SQL injection P0 patched; alert/confirm replaced with modal dialogs; submissions.js 500 cache fixed; SWR type generics corrected
-- 2026-03-30: Full review A→Z — 28 audit findings (P0:4, P1:12, P2:12); 15+ safe fixes applied; ErrorBoundary wired; unused dep removed; .env.example + .gitignore fixed; REUSE-1/2/3/5/7 fixed; ExamRoomPage.tsx + empty ui/ deleted; src/lib/utils.ts created
+- 2026-03-30: Full review A→Z — 28 audit findings; ErrorBoundary wired; unused dep removed; .env.example + .gitignore fixed
 
 ## Skills Usage
 
 → `~/.claude/skills/SKILL.md`
 
-### Lệnh cho dự án này
-- `/full-review` — Chạy A→Z: audit → cleanup → module-refactor → setup-db → README
-- `/cleanup` — Dọn rác
-- `/audit` — Audit phần sẽ đụng đến
-- `/module-refactor` — Chỉ khi file > 500d hoặc god file cần sửa
+### Lenh cho du an nay
+- `/full-review` — Chay A→Z: audit → cleanup → module-refactor → setup-db → README
+- `/cleanup` — Don rac
+- `/audit` — Audit phan se dung den
+- `/module-refactor` — Chi khi file > 500d hoac god file can sua

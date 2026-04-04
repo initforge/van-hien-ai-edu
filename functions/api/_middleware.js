@@ -14,7 +14,7 @@ export async function onRequest(context) {
   const url = new URL(request.url);
 
   // Skip auth checks for login and public endpoints
-  if (url.pathname === '/api/auth' || url.pathname.startsWith('/api/_')) {
+  if (url.pathname === '/api/auth' || url.pathname === '/api/health' || url.pathname.startsWith('/api/_')) {
     return next();
   }
 

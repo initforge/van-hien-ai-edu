@@ -53,7 +53,7 @@ export interface TeacherStats {
   studentCount: number;
   pendingGrading: number;
   totalExams: number;
-  aiPending: number;
+  warningCount?: number;
 }
 
 export interface StudentStats {
@@ -72,6 +72,44 @@ export interface Work {
   content: string | null;
   status: 'pending' | 'analyzed';
   createdAt: string;
+  // Extended fields (admin/teacher)
+  analysisStatus?: 'none' | 'processing' | 'done';
+  chunkCount?: number;
+  wordCount?: number;
+  fileName?: string;
+}
+
+export type WorkAnalysisSection =
+  | 'summary'
+  | 'characters'
+  | 'art_features'
+  | 'content_value'
+  | 'themes'
+  | 'context';
+
+export interface WorkAnalysis {
+  id: string;
+  workId: string;
+  section: WorkAnalysisSection;
+  content: string;
+  isAiGenerated: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkChunk {
+  id: string;
+  workId: string;
+  sequence: number;
+  heading: string | null;
+  content: string;
+  summary: string | null;
+  createdAt: string;
+}
+
+export interface WorkWithAnalysis extends Work {
+  analysis?: WorkAnalysis[];
+  chunks?: WorkChunk[];
 }
 
 // ─── Exams ─────────────────────────────────────────────────────────────────────
@@ -81,14 +119,15 @@ export interface Exam {
   title: string;
   type: 'exercise' | 'exam';
   workId: string | null;
+  workTitle?: string | null;
   classId: string | null;
+  className?: string | null;
   duration: number;
-  status: 'draft' | 'published';
+  status: 'draft' | 'published' | 'ai_preview';
   deadline: string | null;
   createdAt: string;
   // exam-detail.js extended fields
   passage?: string;
-  workTitle?: string;
   author?: string;
   // teacher/grading.js enriched fields
   graded?: number;
@@ -126,6 +165,10 @@ export interface Submission {
   teacherScore: number | null;
   teacherComment: string | null;
   submittedAt: string;
+  // Grading page enriched fields (from exam + questions)
+  graded?: number;
+  total?: number;
+  date?: string;
 }
 
 // ─── Characters ────────────────────────────────────────────────────────────────
@@ -187,9 +230,11 @@ export interface Class {
   teacherId: string | null;
   createdAt: string;
   // admin/classes.js extended fields
+  grade?: number; // 10, 11, 12
   teacherName?: string;
   teacherEmail?: string;
   studentCount?: number;
+  inviteCode?: string | null;
   // teacher/grading.js fields (enriched)
   students?: number;
   pendingExams?: number;

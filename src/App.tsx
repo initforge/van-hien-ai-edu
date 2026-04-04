@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from "react";
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "./contexts/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -22,6 +22,7 @@ const ExamDetail = lazy(() => import("./pages/student/ExamDetail"));
 
 // Teacher
 const TeacherDashboard = lazy(() => import("./pages/teacher/TeacherDashboard"));
+const ClassManagement = lazy(() => import("./pages/teacher/ClassManagement"));
 
 // Admin
 const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
@@ -81,6 +82,7 @@ export default function App() {
         }>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<TeacherDashboard />} />
+          <Route path="classes" element={<ClassManagement />} />
           <Route path="library" element={<Library />} />
           <Route path="exam-bank" element={<ExamBank />} />
           <Route path="grading" element={<Grading />} />

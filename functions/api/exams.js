@@ -8,21 +8,47 @@ export async function onRequestGet({ env, data, request }) {
     const url = new URL(request.url);
     const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
     const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
+    const classId = url.searchParams.get('classId');
 
     if (user.role === 'teacher') {
+      const teacherWhere = classId
+        ? 'WHERE e.teacher_id = ? AND e.class_id = ?'
+        : 'WHERE e.teacher_id = ?';
+      const teacherBinds = classId ? [user.id, classId] : [user.id];
       const [rowsResult, countResult] = await Promise.all([
         env.DB.prepare(
-          "SELECT id, title, type, work_id AS workId, class_id AS classId, duration, status, deadline, created_at AS createdAt FROM exams WHERE teacher_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
-        ).bind(user.id, limit, offset).all(),
+          `SELECT e.id, e.title, e.type, e.work_id AS workId, w.title AS workTitle,
+                  e.class_id AS classId, c.name AS className,
+                  e.duration, e.status, e.deadline, e.created_at AS createdAt,
+                  COUNT(DISTINCT s.id) AS total,
+                  COUNT(DISTINCT CASE WHEN s.status = 'returned' THEN s.id END) AS graded
+           FROM exams e
+           LEFT JOIN works w ON e.work_id = w.id
+           LEFT JOIN classes c ON e.class_id = c.id
+           LEFT JOIN submissions s ON e.id = s.exam_id
+           ${teacherWhere}
+           GROUP BY e.id
+           ORDER BY e.created_at DESC
+           LIMIT ? OFFSET ?`
+        ).bind(...teacherBinds, limit, offset).all(),
         env.DB.prepare(
-          "SELECT COUNT(*) AS total FROM exams WHERE teacher_id = ?"
-        ).bind(user.id).first(),
+          `SELECT COUNT(*) AS total FROM exams e ${teacherWhere}`
+        ).bind(...teacherBinds).first(),
       ]);
       return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
     } else {
       const [rowsResult, countResult] = await Promise.all([
         env.DB.prepare(
-          "SELECT e.id, e.title, e.type, e.work_id AS workId, e.duration, e.status, e.deadline, e.created_at AS createdAt FROM exams e JOIN class_students cs ON e.class_id = cs.class_id WHERE cs.student_id = ? AND e.status = 'published' ORDER BY e.created_at DESC LIMIT ? OFFSET ?"
+          `SELECT e.id, e.title, e.type, e.work_id AS workId, w.title AS workTitle,
+                  e.class_id AS classId, c.name AS className,
+                  e.duration, e.status, e.deadline, e.created_at AS createdAt
+           FROM exams e
+           LEFT JOIN works w ON e.work_id = w.id
+           LEFT JOIN classes c ON e.class_id = c.id
+           JOIN class_students cs ON e.class_id = cs.class_id
+           WHERE cs.student_id = ? AND e.status = 'published'
+           ORDER BY e.created_at DESC
+           LIMIT ? OFFSET ?`
         ).bind(user.id, limit, offset).all(),
         env.DB.prepare(
           "SELECT COUNT(*) AS total FROM exams e JOIN class_students cs ON e.class_id = cs.class_id WHERE cs.student_id = ? AND e.status = 'published'"
@@ -50,12 +76,12 @@ export async function onRequestPost({ request, env, data }) {
 
     // Validate type enum
     const validTypes = ['exercise', 'exam'];
-    const examType = String(body.type || 'exercise');
-    if (!validTypes.includes(examType)) {
+    if (body.type != null && !validTypes.includes(body.type)) {
       return cachedJson({ error: `Loại đề không hợp lệ. Chỉ chấp nhận: ${validTypes.join(', ')}` }, { status: 400, profile: 'nocache' });
     }
 
     // Guard: always create as 'draft', never allow direct publish
+    const examType = body.type != null ? String(body.type) : 'exercise';
     const examStatus = 'draft';
 
     const id = crypto.randomUUID();
@@ -69,5 +95,79 @@ export async function onRequestPost({ request, env, data }) {
   } catch (e) {
     console.error('exams POST error:', e);
     return cachedJson({ error: 'Lỗi khi tạo đề thi. Vui lòng thử lại.' }, { status: 500, profile: 'nocache' });
+  }
+}
+
+// PATCH /api/exams — update status (publish/unpublish) or title
+export async function onRequestPatch({ request, env, data }) {
+  try {
+    const user = data?.user;
+    if (!user || user.role !== 'teacher') return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+
+    const body = await request.json();
+    const { id, status, title } = body;
+
+    if (!id) return new Response(JSON.stringify({ error: 'Thiếu exam ID.' }), { status: 400 });
+
+    // Verify ownership
+    const exam = await env.DB.prepare(
+      "SELECT id FROM exams WHERE id = ? AND teacher_id = ? LIMIT 1"
+    ).bind(id, user.id).first();
+    if (!exam) return new Response(JSON.stringify({ error: 'Không tìm thấy hoặc không có quyền.' }), { status: 404 });
+
+    const fields = [];
+    const values = [];
+    if (status !== undefined) {
+      if (!['draft', 'published'].includes(status)) {
+        return new Response(JSON.stringify({ error: 'Trạng thái không hợp lệ.' }), { status: 400 });
+      }
+      fields.push('status = ?');
+      values.push(status);
+    }
+    if (title !== undefined) {
+      fields.push('title = ?');
+      values.push(String(title).trim());
+    }
+
+    if (fields.length === 0) {
+      return new Response(JSON.stringify({ error: 'Không có trường nào để cập nhật.' }), { status: 400 });
+    }
+
+    values.push(id);
+    await env.DB.prepare(`UPDATE exams SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+  } catch (e) {
+    console.error('exams PATCH error:', e);
+    return new Response(JSON.stringify({ error: 'Lỗi khi cập nhật.' }), { status: 500 });
+  }
+}
+
+// DELETE /api/exams?id=xxx — delete exam (teacher only)
+export async function onRequestDelete({ request, env, data }) {
+  try {
+    const user = data?.user;
+    if (!user || user.role !== 'teacher') return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) return new Response(JSON.stringify({ error: 'Thiếu exam ID.' }), { status: 400 });
+
+    const exam = await env.DB.prepare(
+      "SELECT id FROM exams WHERE id = ? AND teacher_id = ? LIMIT 1"
+    ).bind(id, user.id).first();
+    if (!exam) return new Response(JSON.stringify({ error: 'Không tìm thấy hoặc không có quyền.' }), { status: 404 });
+
+    // Delete questions first (foreign key)
+    await env.DB.prepare("DELETE FROM questions WHERE exam_id = ?").bind(id).run();
+    // Delete submissions first
+    await env.DB.prepare("DELETE FROM submissions WHERE exam_id = ?").bind(id).run();
+    // Delete exam
+    await env.DB.prepare("DELETE FROM exams WHERE id = ?").bind(id).run();
+
+    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+  } catch (e) {
+    console.error('exams DELETE error:', e);
+    return new Response(JSON.stringify({ error: 'Lỗi khi xóa.' }), { status: 500 });
   }
 }

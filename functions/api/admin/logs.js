@@ -1,6 +1,6 @@
 import { cachedJson } from '../_cache.js';
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ env, data, request }) {
   try {
     if (data?.user?.role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
@@ -11,6 +11,9 @@ export async function onRequestGet({ env, data }) {
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const userId = url.searchParams.get('userId');
     const action = url.searchParams.get('action');
+    const role = url.searchParams.get('role');
+    const startDate = url.searchParams.get('startDate');
+    const endDate = url.searchParams.get('endDate');
 
     let query = `
       SELECT
@@ -28,26 +31,51 @@ export async function onRequestGet({ env, data }) {
       WHERE 1=1
     `;
     const binds = [];
+    let countQuery = "SELECT COUNT(*) AS count FROM activity_logs al WHERE 1=1";
+    const countBinds = [];
 
     if (userId) {
       query += " AND al.user_id = ?";
       binds.push(userId);
+      countQuery += " AND al.user_id = ?";
+      countBinds.push(userId);
     }
     if (action) {
       query += " AND al.action = ?";
       binds.push(action);
+      countQuery += " AND al.action = ?";
+      countBinds.push(action);
+    }
+    if (role) {
+      query += " AND al.user_role = ?";
+      binds.push(role);
+      countQuery += " AND al.user_role = ?";
+      countBinds.push(role);
+    }
+    if (startDate) {
+      query += " AND al.created_at >= ?";
+      binds.push(startDate);
+      countQuery += " AND al.created_at >= ?";
+      countBinds.push(startDate);
+    }
+    if (endDate) {
+      query += " AND al.created_at <= ?";
+      binds.push(endDate);
+      countQuery += " AND al.created_at <= ?";
+      countBinds.push(endDate);
     }
 
     query += " ORDER BY al.created_at DESC LIMIT ? OFFSET ?";
     binds.push(limit, offset);
 
-    const { results } = await env.DB.prepare(query).bind(...binds).all();
-
-    const total = await env.DB.prepare("SELECT COUNT(*) AS count FROM activity_logs").first();
+    const [{ results }, totalResult] = await Promise.all([
+      env.DB.prepare(query).bind(...binds).all(),
+      env.DB.prepare(countQuery).bind(...countBinds).first(),
+    ]);
 
     return cachedJson({
       logs: results || [],
-      total: total?.count || 0,
+      total: totalResult?.count || 0,
       limit,
       offset,
     }, { profile: 'dynamic' });

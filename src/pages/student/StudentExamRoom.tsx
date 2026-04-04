@@ -22,10 +22,10 @@ type ExamFilter = 'all' | 'exercise' | 'exam';
 type StatusFilter = 'all' | 'pending' | 'completed';
 
 export default function ExamRoomPage() {
-  const { data, isLoading } = useSWR<Exam[]>('/api/exams', fetcher);
-  const { data: submissions } = useSWR<{ data: Submission[]; total: number }>('/api/submissions', fetcher);
+  const { data: examsData, isLoading } = useSWR<{ data: Exam[]; total: number }>('/api/exams', fetcher);
+  const { data: submissionsData } = useSWR<{ data: Submission[]; total: number }>('/api/submissions', fetcher);
 
-  const EXAM_ROOMS: Exam[] = data ?? [];
+  const EXAM_ROOMS: Exam[] = examsData?.data ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [filter, setFilter] = useState<ExamFilter>('all');
@@ -33,9 +33,9 @@ export default function ExamRoomPage() {
 
   const submittedIds = React.useMemo(() => {
     const ids = new Set<string>();
-    (submissions?.data ?? []).forEach(s => { if (s.examId) ids.add(s.examId); });
+    (submissionsData?.data ?? []).forEach(s => { if (s.examId) ids.add(s.examId); });
     return ids;
-  }, [submissions]);
+  }, [submissionsData]);
 
   const selected = EXAM_ROOMS.find((e) => e.id === selectedId);
   const filtered = EXAM_ROOMS.filter((e) => {
@@ -164,7 +164,7 @@ export default function ExamRoomPage() {
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">quiz</span>
               <p className="text-xs text-outline uppercase font-bold tracking-wider">Câu hỏi</p>
-              <p className="font-bold text-primary">{'—'}</p>
+              <p className="font-bold text-primary">—</p>
             </div>
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">signal_cellular_alt</span>
@@ -203,7 +203,7 @@ export default function ExamRoomPage() {
                 >
                   Huỷ
                 </button>
-                <Link to={`/exam-room/${selected.id}`}
+                <Link to={`/student/exam-room/${selected.id}`}
                   className="px-8 py-3 bg-tertiary text-white rounded-xl font-bold hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-tertiary/20"
                 >
                   Bắt đầu thi ngay

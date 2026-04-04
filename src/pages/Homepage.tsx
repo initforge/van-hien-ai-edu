@@ -155,7 +155,7 @@ export default function Homepage() {
                 <div className="bg-white/70 backdrop-blur-md border border-[#326286]/15 border-l-4 border-l-[#C9A84C] p-8 rounded-[2rem] flex flex-col justify-between group hover:bg-white hover:-translate-y-1 hover:shadow-xl transition-all duration-500 h-full">
                   <div>
                     <h3 className="text-2xl font-headline font-bold mb-2">Ngân hàng Đề thi</h3>
-                    <p className="text-on-surface-variant">Hơn 5000+ đề thi bám sát chương trình GDPT 2018.</p>
+                    <p className="text-on-surface-variant">Đề thi bám sát chương trình GDPT 2018.</p>
                   </div>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-[#C9A84C] font-bold">Lớp 6 - Lớp 9</span>

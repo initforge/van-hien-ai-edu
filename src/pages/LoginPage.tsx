@@ -2,14 +2,26 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
+type AuthTab = "login" | "register";
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
+  const [tab, setTab] = useState<AuthTab>("login");
+
+  // Login state
   const [isLoading, setIsLoading] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Register state
+  const [regName, setRegName] = useState("");
+  const [regCode, setRegCode] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState("");
+  const [regSuccess, setRegSuccess] = useState<{ className: string; password: string } | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +52,36 @@ export default function LoginPage() {
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : "Lỗi kết nối đến máy chủ.");
       setIsLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regName.trim() || !regCode.trim()) {
+      setRegError("Vui lòng nhập đầy đủ họ tên và mã lớp.");
+      return;
+    }
+    setRegLoading(true);
+    setRegError("");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: regName.trim(), inviteCode: regCode.trim().toUpperCase() }),
+      });
+      const data = await res.json() as { success?: boolean; className?: string; password?: string; error?: string; redirect?: string };
+      if (!res.ok) {
+        setRegError(data.error || "Đăng ký thất bại.");
+        return;
+      }
+      setRegSuccess({ className: data.className || "lớp của bạn", password: data.password || "" });
+      if (data.redirect) {
+        setTimeout(() => navigate(data.redirect!), 500);
+      }
+    } catch {
+      setRegError("Lỗi kết nối đến máy chủ.");
+    } finally {
+      setRegLoading(false);
     }
   };
 
@@ -94,14 +136,18 @@ export default function LoginPage() {
             <div className="absolute inset-0 flex items-center justify-center p-12"
               style={{ animation: "fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both" }}
             >
-              <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl group-hover:shadow-3xl transition-shadow duration-700 bg-gradient-to-br from-primary/60 to-primary-container flex items-center justify-center">
-                <span className="material-symbols-outlined text-white/30 text-[100px]">menu_book</span>
-                <div className="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent"></div>
-                <div className="absolute bottom-8 left-8 right-8 text-white"
+              <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl group-hover:shadow-3xl transition-shadow duration-700 bg-surface-variant flex items-center justify-center">
+                <img 
+                  src="/images/van_hien_ai_login_illustration.png" 
+                  alt="Văn Học AI Illustration" 
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" 
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-primary/95 via-primary/30 to-transparent"></div>
+                <div className="absolute bottom-8 left-8 right-8 text-white z-10"
                   style={{ animation: "slideUp 0.6s ease-out 0.5s both" }}
                 >
                   <h2 className="font-headline text-3xl mb-2">Gìn giữ nét Việt</h2>
-                  <p className="font-body text-white/70 text-sm leading-relaxed">Kết nối tinh hoa văn học truyền thống với trí tuệ nhân tạo hiện đại.</p>
+                  <p className="font-body text-white/80 text-sm leading-relaxed drop-shadow-md">Kết nối tinh hoa văn học truyền thống với trí tuệ nhân tạo hiện đại.</p>
                 </div>
               </div>
             </div>
@@ -120,77 +166,185 @@ export default function LoginPage() {
             <div className="flex gap-8 border-b border-outline-variant/30 mb-8"
               style={{ animation: "fadeIn 0.5s ease-out 0.4s both" }}
             >
-              <button className="pb-4 text-sm font-label font-semibold tracking-wide text-primary border-b-2 border-primary transition-all">ĐĂNG NHẬP</button>
+              <button
+                onClick={() => { setTab("login"); setErrorMsg(""); setRegError(""); setRegSuccess(null); }}
+                className={`pb-4 text-sm font-label font-semibold tracking-wide transition-all ${
+                  tab === "login" ? "text-primary border-b-2 border-primary" : "text-outline hover:text-on-surface-variant"
+                }`}
+              >
+                ĐĂNG NHẬP
+              </button>
+              <button
+                onClick={() => { setTab("register"); setErrorMsg(""); setRegError(""); setRegSuccess(null); }}
+                className={`pb-4 text-sm font-label font-semibold tracking-wide transition-all ${
+                  tab === "register" ? "text-primary border-b-2 border-primary" : "text-outline hover:text-on-surface-variant"
+                }`}
+              >
+                ĐĂNG KÝ
+              </button>
             </div>
 
-            {/* Login Form */}
+            {/* Form */}
             <div className="flex-grow space-y-6">
-              {errorMsg && (
-                <div className="bg-error/10 text-error p-3 rounded-xl text-sm font-semibold border border-error/20 flex items-center gap-2" style={{ animation: "fadeIn 0.3s ease-out both" }}>
-                  <span className="material-symbols-outlined text-sm">error</span>
-                  {errorMsg}
-                </div>
+              {/* ── Login Form ─────────────────────────────── */}
+              {tab === "login" && (
+                <>
+                  {errorMsg && (
+                    <div className="bg-error/10 text-error p-3 rounded-xl text-sm font-semibold border border-error/20 flex items-center gap-2" style={{ animation: "fadeIn 0.3s ease-out both" }}>
+                      <span className="material-symbols-outlined text-sm">error</span>
+                      {errorMsg}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleLogin} className="space-y-5">
+                    {/* Username */}
+                    <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
+                      <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Username</label>
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">account_circle</span>
+                        <input
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value)}
+                          className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                          placeholder="an hoặc mai"
+                          type="text"
+                          autoComplete="username"
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
+                      <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu</label>
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">lock</span>
+                        <input
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 pr-12 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                          placeholder="••••••••"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
+                          disabled={isLoading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-outline/50 hover:text-primary transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-lg">
+                            {showPassword ? "visibility_off" : "visibility"}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Submit */}
+                    <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
+                      <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full text-center py-4 bg-primary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {isLoading ? (
+                          <><span className="material-symbols-outlined animate-spin text-lg">progress_activity</span> Đang xử lý...</>
+                        ) : (
+                          <><span className="material-symbols-outlined text-lg">login</span> Đăng nhập</>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </>
               )}
 
-              <form onSubmit={handleLogin} className="space-y-5">
-                {/* Username */}
-                <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Username</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">account_circle</span>
-                    <input
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
-                      placeholder="an hoặc mai"
-                      type="text"
-                      autoComplete="username"
-                      disabled={isLoading}
-                    />
-                  </div>
-                </div>
+              {/* ── Register Form ──────────────────────────── */}
+              {tab === "register" && (
+                <>
+                  {regSuccess ? (
+                    <div className="bg-green-50 border border-green-200 rounded-2xl p-5 text-sm space-y-3" style={{ animation: "fadeIn 0.4s ease-out both" }}>
+                      <div className="flex items-center gap-2 text-green-600 font-bold mb-2">
+                        <span className="material-symbols-outlined">check_circle</span>
+                        Đăng ký thành công!
+                      </div>
+                      <p>Chào mừng <strong>{regName.trim()}</strong> đã tham gia lớp <strong>{regSuccess.className}</strong>.</p>
+                      <div className="bg-white rounded-xl p-3 border border-green-100">
+                        <p className="text-[11px] font-bold uppercase text-green-500 mb-1">Mật khẩu đăng nhập của bạn</p>
+                        <p className="font-mono text-lg font-bold text-green-700 tracking-wider select-all">{regSuccess.password}</p>
+                      </div>
+                      <p className="text-xs text-green-600/70">Hãy ghi nhớ mật khẩu này. Hệ thống sẽ tự điều hướng đến trang học tập...</p>
+                    </div>
+                  ) : (
+                    <>
+                      {regError && (
+                        <div className="bg-error/10 text-error p-3 rounded-xl text-sm font-semibold border border-error/20 flex items-center gap-2" style={{ animation: "fadeIn 0.3s ease-out both" }}>
+                          <span className="material-symbols-outlined text-sm">error</span>
+                          {regError}
+                        </div>
+                      )}
 
-                {/* Password */}
-                <div style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mật khẩu</label>
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">lock</span>
-                    <input
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 pr-12 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
-                      placeholder="••••••••"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      disabled={isLoading}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-outline/50 hover:text-primary transition-colors"
-                    >
-                      <span className="material-symbols-outlined text-lg">
-                        {showPassword ? "visibility_off" : "visibility"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
+                      <div className="bg-[#326286]/5 rounded-2xl p-4 mb-2" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
+                        <p className="text-xs text-primary font-semibold flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-sm">info</span>
+                          Nhập mã lớp do giáo viên cung cấp để đăng ký tài khoản.
+                        </p>
+                      </div>
 
-                {/* Submit */}
-                <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full text-center py-4 bg-primary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-primary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {isLoading ? (
-                      <><span className="material-symbols-outlined animate-spin text-lg">progress_activity</span> Đang xử lý...</>
-                    ) : (
-                      <><span className="material-symbols-outlined text-lg">login</span> Đăng nhập</>
-                    )}
-                  </button>
-                </div>
-              </form>
+                      <form onSubmit={handleRegister} className="space-y-5">
+                        {/* Họ tên */}
+                        <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.5s both" }}>
+                          <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Họ và tên</label>
+                          <div className="relative">
+                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">badge</span>
+                            <input
+                              value={regName}
+                              onChange={(e) => setRegName(e.target.value)}
+                              className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white"
+                              placeholder="Nguyễn Văn A"
+                              type="text"
+                              autoComplete="name"
+                              disabled={regLoading}
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        {/* Mã lớp */}
+                        <div className="space-y-1.5" style={{ animation: "fadeIn 0.5s ease-out 0.6s both" }}>
+                          <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1">Mã lớp</label>
+                          <div className="relative">
+                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline/50">school</span>
+                            <input
+                              value={regCode}
+                              onChange={(e) => setRegCode(e.target.value.toUpperCase())}
+                              className="w-full bg-surface-container-low/50 border-0 border-b border-outline-variant/50 focus:border-primary focus:ring-0 px-4 pl-11 py-3 text-sm transition-all outline-none rounded-t-lg hover:bg-surface-container-low/70 focus:bg-white font-mono tracking-widest text-center uppercase"
+                              placeholder="VH8A2K1"
+                              disabled={regLoading}
+                              required
+                              maxLength={16}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Submit */}
+                        <div style={{ animation: "fadeIn 0.5s ease-out 0.7s both" }}>
+                          <button
+                            type="submit"
+                            disabled={regLoading}
+                            className="w-full text-center py-4 bg-secondary text-white font-headline font-bold text-lg rounded-full shadow-lg hover:shadow-xl hover:shadow-secondary/20 hover:scale-[1.01] hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {regLoading ? (
+                              <><span className="material-symbols-outlined animate-spin text-lg">progress_activity</span> Đang đăng ký...</>
+                            ) : (
+                              <><span className="material-symbols-outlined text-lg">how_to_reg</span> Đăng ký tài khoản</>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Admin link */}

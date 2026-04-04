@@ -1,328 +1,444 @@
-﻿import React, { useState } from 'react';
-import { FILL_SETTINGS } from '../../lib/utils';
-import {
-  CLASS_STATS_CARDS,
-  CLASS_STATS_BARS,
-  STUDENT_STATS_ROWS,
-  STYLE_CARDS,
-  COMMON_ERRORS,
-  TOKEN_FEATURES,
-  TOKEN_DETAIL_ROWS,
-} from '../../constants/aiReview';
+import React, { useState } from 'react';
+import useSWR from 'swr';
+import { fetcher } from '../../lib/fetcher';
 
-type Tab = 'class_stats' | 'student_stats' | 'style' | 'tokens' | 'rubrics';
+type Tab = 'class_stats' | 'student_stats' | 'tokens' | 'rubrics';
 
 const TAB_LABELS: Record<Tab, string> = {
   class_stats: 'Thống kê lớp',
-  student_stats: 'Thống kê học sinh',
-  style: 'Văn phong',
+  student_stats: 'Thống kê HS',
   tokens: 'Sử dụng Token',
-  rubrics: 'Bảo mẫu AI',
+  rubrics: 'Tiêu chí chấm điểm',
 };
 
-export default function TeacherAIReviewPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("class_stats");
+const FEATURE_LABELS: Record<string, string> = {
+  grading: 'Chấm bài',
+  chatbot: 'Chatbot',
+  exam_gen: 'Ra đề thi',
+  multiverse: 'Đa Vũ Trụ',
+};
+
+function fmtNum(n: number | null) {
+  if (n == null) return '—';
+  return n.toLocaleString('vi');
+}
+function fmtScore(n: number | null) {
+  if (n == null) return '—';
+  return n.toFixed(1);
+}
+
+interface RubricRow {
+  id: string;
+  name: string;
+  description: string;
+  weight: number;
+  hintPrompt: string;
+  orderIndex: number;
+}
+interface TokenRow {
+  feature: string;
+  totalInput: number;
+  totalOutput: number;
+  totalTokens: number;
+  callCount: number;
+}
+interface ClassStat {
+  id: string;
+  name: string;
+  gradeLevel: number | null;
+  studentCount: number;
+  pendingCount: number;
+  gradedCount: number;
+  avgScore: number | null;
+}
+interface SubmissionRow {
+  studentId: string;
+  studentName: string;
+  className: string;
+  examTitle: string;
+  status: string;
+  aiScore: number | null;
+  teacherScore: number | null;
+  submittedAt: string;
+}
+
+export default function AIReviewPage() {
+  const [tab, setTab] = useState<Tab>('class_stats');
+  const [editingRubric, setEditingRubric] = useState<RubricRow | null>(null);
+  const [rubricForm, setRubricForm] = useState({ name: '', description: '', weight: 25, hintPrompt: '' });
+  const [saving, setSaving] = useState(false);
+
+  const { data, mutate, isLoading } = useSWR<{
+    rubrics: RubricRow[];
+    tokens: TokenRow[];
+    totalTokens: number;
+    classStats: ClassStat[];
+    recentSubmissions: SubmissionRow[];
+  }>('/api/teacher/stats-ai', fetcher);
+
+  const rubrics: RubricRow[] = data?.rubrics ?? [];
+  const tokens: TokenRow[] = data?.tokens ?? [];
+  const classStats: ClassStat[] = data?.classStats ?? [];
+  const submissions: SubmissionRow[] = data?.recentSubmissions ?? [];
+  const totalTokens = data?.totalTokens ?? 0;
+
+  const totalWeight = rubrics.reduce((s, r) => s + r.weight, 0);
+
+  // Trend: compare last 2 submissions per student
+  const studentTrend: Record<string, number> = {};
+  const sortedSub = [...submissions].sort((a, b) =>
+    new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+  for (const s of sortedSub) {
+    const score = s.teacherScore ?? s.aiScore;
+    if (score != null) {
+      const prev = studentTrend[s.studentId];
+      studentTrend[s.studentId] = score - (prev ?? score);
+    }
+  }
+
+  const handleSaveRubric = async () => {
+    if (!editingRubric) return;
+    setSaving(true);
+    try {
+      await fetch('/api/teacher/rubric', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingRubric.id,
+          name: rubricForm.name,
+          description: rubricForm.description,
+          weight: rubricForm.weight,
+          hintPrompt: rubricForm.hintPrompt,
+        }),
+      });
+      setEditingRubric(null);
+      await mutate();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddRubric = async () => {
+    setEditingRubric({ id: '', name: '', description: '', weight: 25, hintPrompt: '', orderIndex: rubrics.length + 1 });
+    setRubricForm({ name: '', description: '', weight: 25, hintPrompt: '' });
+  };
+
+  const handleCreateRubric = async () => {
+    if (!rubricForm.name.trim()) return;
+    setSaving(true);
+    try {
+      await fetch('/api/teacher/rubric', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rubricForm),
+      });
+      setEditingRubric(null);
+      await mutate();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteRubric = async (id: string) => {
+    await fetch(`/api/teacher/rubric?id=${id}`, { method: 'DELETE' });
+    await mutate();
+  };
 
   return (
-    <div className="max-w-[1600px] mx-auto">
+    <div className="max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-12">
-        <span className="text-xs font-bold text-secondary uppercase tracking-[0.15em] mb-2 block">Trung tâm điều hành AI</span>
-        <h2 className="text-5xl font-headline text-primary leading-tight">Phân tích &amp; Duyệt AI</h2>
+      <div className="mb-10">
+        <span className="text-xs font-bold text-secondary uppercase tracking-widest block mb-2">Trung tâm điều hành AI</span>
+        <h2 className="text-4xl font-headline font-bold text-primary">Phân tích & Duyệt AI</h2>
       </div>
 
-      {/* Sub-navigation Tabs */}
-      <div className="flex items-center gap-8 border-b border-surface-container-highest mb-10 overflow-x-auto pb-1">
-        {(Object.keys(TAB_LABELS) as Tab[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`pb-4 px-2 transition-all whitespace-nowrap font-medium ${
-              activeTab === tab
-                ? "text-primary font-bold border-b-2 border-primary"
-                : "text-slate-500 hover:text-primary"
+      {/* Tabs */}
+      <div className="flex gap-8 border-b border-outline-variant/20 mb-10 overflow-x-auto">
+        {(Object.entries(TAB_LABELS) as [Tab, string][]).map(([key, label]) => (
+          <button key={key}
+            onClick={() => setTab(key)}
+            className={`pb-3 text-sm font-bold transition-all whitespace-nowrap ${
+              tab === key
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-slate-400 hover:text-primary'
             }`}
           >
-            {TAB_LABELS[tab]}
+            {label}
           </button>
         ))}
       </div>
 
-
-
-      {/* ═══ TAB: Thống kê lớp ═══ */}
-      {activeTab === "class_stats" && (
+      {/* ── CLASS STATS ─────────────────────────────────── */}
+      {tab === 'class_stats' && (
         <div className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {CLASS_STATS_CARDS.map((s, i) => (
-              <div key={i} className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border-[0.5px] border-outline-variant/30">
-                <span className={`material-symbols-outlined ${s.color} text-3xl mb-3 block`} style={FILL_SETTINGS}>{s.icon}</span>
-                <p className="text-3xl font-headline font-bold text-primary mb-1">{s.value}</p>
-                <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">{s.label}</p>
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              { label: 'Lớp đang quản lý', value: String(classStats.length), icon: 'school', color: 'text-primary' },
+              { label: 'Tổng bài đã chấm', value: String(submissions.filter(s => s.status === 'returned').length), icon: 'grading', color: 'text-secondary' },
+              { label: 'Bài chờ chấm', value: String(submissions.filter(s => s.status !== 'returned').length), icon: 'pending_actions', color: 'text-amber-500' },
+              { label: 'Token tháng này', value: totalTokens > 0 ? `${(totalTokens / 1000).toFixed(1)}k` : '—', icon: 'memory', color: 'text-purple-500' },
+            ].map((card, i) => (
+              <div key={i} className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-outline-variant/15">
+                <span className={`material-symbols-outlined ${card.color} text-2xl mb-3 block`}>{card.icon}</span>
+                <p className="text-3xl font-headline font-bold text-primary">{card.value}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mt-1">{card.label}</p>
               </div>
             ))}
           </div>
-          <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
-            <h3 className="font-headline text-xl font-bold text-primary mb-6">Điểm trung bình theo lớp</h3>
-            <div className="space-y-4">
-              {CLASS_STATS_BARS.map((cls, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <span className="w-16 text-sm font-bold text-primary">{cls.name}</span>
-                  <div className="flex-1 h-3 bg-surface-container-highest rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-secondary to-primary rounded-full transition-all" style={{ width: `${cls.avg * 10}%` }}></div>
-                  </div>
-                  <span className="w-10 text-right font-bold text-primary">{cls.avg}</span>
-                  <span className="text-xs text-slate-400">({cls.count} hs)</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ═══ TAB: Thống kê học sinh ═══ */}
-      {activeTab === "student_stats" && (
-        <div className="space-y-8">
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl border-[0.5px] border-outline-variant/30 overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-surface-container-low/50 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="px-6 py-4">Học sinh</th>
-                  <th className="px-6 py-4">Lớp</th>
-                  <th className="px-6 py-4 text-center">Bài nộp</th>
-                  <th className="px-6 py-4 text-center">Điểm TB</th>
-                  <th className="px-6 py-4 text-center">Xu hướng</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                {STUDENT_STATS_ROWS.map((s, i) => (
-                  <tr key={i} className="hover:bg-primary/5 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-primary">{s.name}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{s.cls}</td>
-                    <td className="px-6 py-4 text-center text-sm font-mono">{s.submitted}</td>
-                    <td className="px-6 py-4 text-center font-bold text-primary text-lg">{s.avg}</td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${s.trend.startsWith("+") ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"}`}>
-                        {s.trend}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAB: Văn phong ═══ */}
-      {activeTab === "style" && (
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {STYLE_CARDS.map((s, i) => (
-              <div key={i} className={`p-6 rounded-2xl border-[0.5px] border-outline-variant/30 ${s.color.split(' ')[0]}`}>
-                <span className={`material-symbols-outlined ${s.color.split(' ')[1]} text-3xl mb-3 block`}>{s.icon}</span>
-                <p className="text-3xl font-headline font-bold text-primary mb-1">{s.value}</p>
-                <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-2">{s.label}</p>
-                <p className="text-sm text-slate-600">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-          <div className="bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
-            <h3 className="font-headline text-xl font-bold text-primary mb-6">Lỗi phổ biến nhất</h3>
-            <div className="space-y-3">
-              {COMMON_ERRORS.map((e, i) => (
-                <div key={i} className="flex items-center gap-4">
-                  <span className="w-6 text-right text-sm font-bold text-slate-400">{i + 1}</span>
-                  <span className="flex-1 text-sm text-on-surface font-medium">{e.error}</span>
-                  <div className="w-32 h-2 bg-surface-container-highest rounded-full overflow-hidden">
-                    <div className="h-full bg-tertiary rounded-full" style={{ width: `${(e.count / 50) * 100}%` }}></div>
-                  </div>
-                  <span className="text-xs font-bold text-slate-500 w-10 text-right">{e.count} lần</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ TAB: Sử dụng Token ═══ */}
-      {activeTab === "tokens" && (
-        <div className="space-y-8">
-          {/* Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-primary-container text-white p-8 rounded-2xl relative overflow-hidden col-span-1">
-              <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
-              <p className="text-xs uppercase tracking-widest opacity-80 font-bold mb-2">Hạn mức tháng</p>
-              <div className="flex items-end gap-2 mb-4">
-                <span className="text-4xl font-bold">45,230</span>
-                <span className="text-sm opacity-70 mb-1">/ 100,000</span>
-              </div>
-              <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-secondary-fixed w-[45%] rounded-full shadow-[0_0_10px_2px_rgba(141,246,217,0.3)]"></div>
-              </div>
-              <button className="mt-6 w-full bg-white text-primary-container py-3 rounded-xl font-bold text-sm hover:bg-secondary-fixed transition-all active:scale-[0.98]">Nâng cấp gói</button>
-            </div>
-            <div className="col-span-2 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-[0.5px] border-outline-variant/30">
-              <h3 className="font-headline text-xl font-bold text-primary mb-6">Token theo tính năng</h3>
+          {/* Class bars */}
+          <div className="bg-white/80 rounded-2xl p-8 border border-outline-variant/15">
+            <h3 className="font-headline font-bold text-primary text-lg mb-6">Điểm trung bình theo lớp</h3>
+            {isLoading ? (
               <div className="space-y-4">
-                {TOKEN_FEATURES.map((f, i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <span className="w-28 text-sm font-medium text-slate-600">{f.name}</span>
-                    <div className="flex-1 h-3 bg-surface-container-highest rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${i === 0 ? "bg-primary" : i === 1 ? "bg-secondary" : i === 2 ? "bg-tertiary" : "bg-amber-500"}`} style={{ width: `${f.pct}%` }}></div>
+                {[1,2,3].map(i => <div key={i} className="h-10 bg-slate-100 rounded-xl animate-pulse" />)}
+              </div>
+            ) : classStats.length === 0 ? (
+              <p className="text-slate-400 text-sm">Chưa có lớp nào.</p>
+            ) : (
+              <div className="space-y-5">
+                {classStats.map(c => (
+                  <div key={c.id} className="flex items-center gap-4">
+                    <div className="w-40 flex-shrink-0">
+                      <p className="font-bold text-primary text-sm">{c.name}</p>
+                      <p className="text-xs text-slate-400">{c.studentCount} HS</p>
                     </div>
-                    <span className="text-sm font-bold text-primary w-16 text-right">{f.tokens.toLocaleString()}</span>
-                    <span className="text-xs text-slate-400 w-10 text-right">{f.pct}%</span>
+                    <div className="flex-1 h-3 bg-surface-container-high rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-secondary to-primary rounded-full transition-all"
+                        style={{ width: c.avgScore != null ? `${(c.avgScore / 10) * 100}%` : '0%' }}
+                      />
+                    </div>
+                    <span className="w-10 text-right font-bold text-primary text-sm">
+                      {c.avgScore != null ? c.avgScore.toFixed(1) : '—'}
+                    </span>
+                    {c.pendingCount > 0 && (
+                      <span className="text-xs font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">
+                        {c.pendingCount} chờ
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-
-          {/* Detail Table */}
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl border-[0.5px] border-outline-variant/30 overflow-hidden">
-            <div className="px-8 py-5 border-b border-outline-variant/10 flex justify-between items-center">
-              <h3 className="font-headline text-lg font-bold text-primary">Chi tiết sử dụng token</h3>
-              <button className="text-xs font-bold text-primary uppercase tracking-wider hover:underline">Xuất CSV</button>
-            </div>
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-surface-container-low/50 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="px-6 py-4">Ngày</th>
-                  <th className="px-6 py-4">Tính năng</th>
-                  <th className="px-6 py-4">Mô tả</th>
-                  <th className="px-6 py-4 text-right">Input tokens</th>
-                  <th className="px-6 py-4 text-right">Output tokens</th>
-                  <th className="px-6 py-4 text-right">Tổng</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/10">
-                {TOKEN_DETAIL_ROWS.map((row, i) => (
-                  <tr key={i} className="hover:bg-primary/5 transition-colors">
-                    <td className="px-6 py-4 text-sm text-slate-600">{row.date}</td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
-                        row.feature === "Chấm bài" ? "bg-primary/10 text-primary" :
-                        row.feature === "Chatbot" ? "bg-secondary/10 text-secondary" :
-                        row.feature === "Ra đề" ? "bg-tertiary/10 text-tertiary" :
-                        "bg-amber-100 text-amber-700"
-                      }`}>{row.feature}</span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{row.desc}</td>
-                    <td className="px-6 py-4 text-right text-sm font-mono text-slate-600">{row.input.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-sm font-mono text-slate-600">{row.output.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right text-sm font-mono font-bold text-primary">{row.total.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="px-6 py-4 bg-surface-container-low/20 border-t border-outline-variant/10 flex justify-between items-center">
-              <span className="text-xs text-slate-500 font-medium">Hiển thị 7 giao dịch gần nhất</span>
-              <button className="text-xs font-bold text-primary hover:underline">Xem tất cả →</button>
-            </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* ═══ TAB: Bảo mẫu AI (AI Guardrails & Rubrics) ═══ */}
-      {activeTab === "rubrics" && (
-        <div className="space-y-8 animate-[fadeIn_0.5s_ease-out]">
-          <div className="flex justify-between items-end mb-6">
-            <div>
-              <h3 className="font-headline text-2xl font-bold text-primary mb-2">Quản lý Tiêu chí chấm điểm AI</h3>
-              <p className="text-outline text-sm max-w-2xl">Thiết lập các trọng số đánh giá (Rubrics) để định hướng cho AI khi tự động phân tích bài viết của học sinh, đảm bảo bám sát barem giáo dục chuẩn.</p>
+      {/* ── STUDENT STATS ────────────────────────────────── */}
+      {tab === 'student_stats' && (
+        <div className="bg-white/80 rounded-2xl border border-outline-variant/15 overflow-hidden">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-surface-container-low/50 text-xs text-slate-500 uppercase tracking-wider">
+                <th className="px-6 py-4 font-bold">Học sinh</th>
+                <th className="px-6 py-4 font-bold">Lớp</th>
+                <th className="px-6 py-4 font-bold">Bài đã chấm</th>
+                <th className="px-6 py-4 font-bold text-right">Điểm gần nhất</th>
+                <th className="px-6 py-4 font-bold text-right">Xu hướng</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/10">
+              {isLoading ? (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400">Đang tải...</td></tr>
+              ) : submissions.length === 0 ? (
+                <tr><td colSpan={5} className="py-12 text-center text-slate-400">Chưa có dữ liệu.</td></tr>
+              ) : (
+                submissions.slice(0, 30).map((s, i) => {
+                  const score = s.teacherScore ?? s.aiScore;
+                  const trend = studentTrend[s.studentId] ?? 0;
+                  return (
+                    <tr key={`${s.studentId}-${i}`} className="hover:bg-primary/5 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-primary">{s.studentName}</td>
+                      <td className="px-6 py-4 text-sm text-slate-500">{s.className}</td>
+                      <td className="px-6 py-4 text-sm text-slate-500">{s.examTitle}</td>
+                      <td className="px-6 py-4 text-right font-bold text-lg text-primary">{fmtScore(score)}</td>
+                      <td className="px-6 py-4 text-right">
+                        {trend !== 0 && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${trend > 0 ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500'}`}>
+                            {trend > 0 ? `+${trend.toFixed(1)}` : trend.toFixed(1)}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── TOKENS ──────────────────────────────────────── */}
+      {tab === 'tokens' && (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {tokens.map(t => (
+              <div key={t.feature} className="bg-white/80 rounded-2xl p-6 border border-outline-variant/15">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">
+                      {FEATURE_LABELS[t.feature] || t.feature}
+                    </p>
+                    <p className="text-3xl font-headline font-bold text-primary">
+                      {(t.totalTokens / 1000).toFixed(1)}k
+                    </p>
+                  </div>
+                  <span className="text-xs text-slate-400 bg-surface-container-low px-2 py-1 rounded-full">
+                    {t.callCount} lần
+                  </span>
+                </div>
+                <div className="flex gap-2 text-xs text-slate-400">
+                  <span>In: {(t.totalInput / 1000).toFixed(1)}k</span>
+                  <span>Out: {(t.totalOutput / 1000).toFixed(1)}k</span>
+                </div>
+              </div>
+            ))}
+            {tokens.length === 0 && !isLoading && (
+              <p className="col-span-3 text-center text-slate-400 py-12">Chưa có dữ liệu sử dụng token.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── RUBRICS ───────────────────────────────────── */}
+      {tab === 'rubrics' && (
+        <div className="space-y-6">
+          {/* Weight bar */}
+          {!isLoading && rubrics.length > 0 && (
+            <div className="bg-white/80 rounded-2xl p-6 border border-outline-variant/15">
+              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+                <span>Phân bổ trọng số</span>
+                <span>{totalWeight}%</span>
+              </div>
+              <div className="h-4 rounded-full overflow-hidden flex bg-surface-container-low">
+                {rubrics.map((r, i) => (
+                  <div key={r.id} className="h-full flex items-center justify-center text-white text-[10px] font-bold overflow-hidden"
+                    style={{
+                      width: `${r.weight}%`,
+                      background: ['#326286', '#C9A84C', '#7c3aed', '#16a34a', '#ea580c'][i % 5],
+                    }}
+                    title={r.name}
+                  >
+                    {r.weight}%
+                  </div>
+                ))}
+              </div>
             </div>
-            <button className="bg-gradient-to-r from-primary to-primary-container text-white px-5 py-2.5 rounded-full font-headline font-bold hover:shadow-lg active:scale-95 transition-all text-sm flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px]">add</span> Thêm tiêu chí mới
+          )}
+
+          {/* Rubric cards */}
+          <div className="flex justify-end">
+            <button onClick={handleAddRubric}
+              className="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-primary/90 transition-all shadow-md">
+              <span className="material-symbols-outlined text-base">add</span>
+              Thêm tiêu chí
             </button>
           </div>
 
-          {/* Progress Bar for Weights */}
-          <div className="bg-surface-container-lowest p-6 rounded-2xl border border-outline-variant/30 text-center">
-            <div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3">
-              <span className="text-primary">Đã phân bổ</span>
-              <span className="text-secondary">100% / 100%</span>
-            </div>
-            <div className="w-full h-4 bg-surface-container-highest rounded-full flex overflow-hidden shadow-inner">
-               <div className="h-full bg-primary transition-all duration-1000" style={{ width: '40%' }} title="Nội dung Focus"></div>
-               <div className="h-full bg-secondary transition-all duration-1000" style={{ width: '30%' }} title="Lập luận logic"></div>
-               <div className="h-full bg-tertiary transition-all duration-1000" style={{ width: '20%' }} title="Diễn đạt & Từ vựng"></div>
-               <div className="h-full bg-amber-500 transition-all duration-1000" style={{ width: '10%' }} title="Sáng tạo"></div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {isLoading ? (
+              [1,2,3,4].map(i => (
+                <div key={i} className="h-48 bg-slate-100 rounded-2xl animate-pulse" />
+              ))
+            ) : rubrics.map(r => (
+              <div key={r.id} className="bg-white/80 rounded-2xl p-6 border border-outline-variant/15 hover:shadow-md transition-all">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h4 className="font-headline font-bold text-primary text-lg">{r.name}</h4>
+                    <span className="text-xs font-bold text-secondary">{r.weight}%</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { setEditingRubric(r); setRubricForm({ name: r.name, description: r.description, weight: r.weight, hintPrompt: r.hintPrompt }); }}
+                      className="text-xs text-primary hover:underline font-bold">Sửa</button>
+                    <button onClick={() => handleDeleteRubric(r.id)}
+                      className="text-xs text-red-400 hover:text-red-600 font-bold">Xóa</button>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500 leading-relaxed">{r.description || '—'}</p>
+                {r.hintPrompt && (
+                  <p className="text-xs text-slate-400 italic mt-2 bg-surface-container-low p-3 rounded-lg leading-relaxed">
+                    Gợi ý: {r.hintPrompt}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
-
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Rubric 1 */}
-            <div className="bg-white/80 p-6 rounded-2xl border border-primary/20 hover:shadow-xl hover:-translate-y-1 transition-all group">
-               <div className="flex justify-between items-start mb-4">
-                 <span className="material-symbols-outlined text-primary text-3xl">psychology</span>
-                 <span className="bg-primary/10 text-primary text-lg font-black font-mono px-3 py-1 rounded-xl">40%</span>
-               </div>
-               <h4 className="font-headline font-bold text-lg text-on-surface mb-2">Trọng tâm & Mở rộng</h4>
-               <p className="text-sm text-outline mb-6 leading-relaxed">Đánh giá khả năng hiểu đúng yêu cầu đề bài, phân tích sâu và phân bổ lý lẽ cân đối.</p>
-               
-               <div className="mt-auto space-y-3 relative z-10">
-                 <input type="range" min="0" max="100" defaultValue="40" className="w-full accent-primary" />
-               </div>
-               <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between">
-                 <button className="text-[11px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-wider transition-colors">XÓA</button>
-                 <button className="text-[11px] font-bold text-primary hover:underline uppercase tracking-wider">CẤU HÌNH PROMPT</button>
-               </div>
+          {rubrics.length === 0 && !isLoading && (
+            <div className="text-center py-16 text-slate-400">
+              <span className="material-symbols-outlined text-5xl mb-4 block opacity-20">psychology</span>
+              <p>Chưa có tiêu chí nào. Nhấn "Thêm tiêu chí" để bắt đầu.</p>
             </div>
+          )}
+        </div>
+      )}
 
-            {/* Rubric 2 */}
-            <div className="bg-white/80 p-6 rounded-2xl border border-secondary/20 hover:shadow-xl hover:-translate-y-1 transition-all group">
-               <div className="flex justify-between items-start mb-4">
-                 <span className="material-symbols-outlined text-secondary text-3xl">account_tree</span>
-                 <span className="bg-secondary/10 text-secondary text-lg font-black font-mono px-3 py-1 rounded-xl">30%</span>
-               </div>
-               <h4 className="font-headline font-bold text-lg text-on-surface mb-2">Lập luận logic</h4>
-               <p className="text-sm text-outline mb-6 leading-relaxed">Kiểm tra tính mạch lạc của bố cục, lập luận thuyết phục có kèm theo minh chứng rõ ràng.</p>
-               
-               <div className="mt-auto space-y-3">
-                 <input type="range" min="0" max="100" defaultValue="30" className="w-full accent-secondary" />
-               </div>
-               <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between">
-                 <button className="text-[11px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-wider transition-colors">XÓA</button>
-                 <button className="text-[11px] font-bold text-primary hover:underline uppercase tracking-wider">CẤU HÌNH PROMPT</button>
-               </div>
+      {/* Edit/Create Rubric Modal */}
+      {editingRubric !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setEditingRubric(null)}
+        >
+          <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-headline text-xl font-bold text-primary mb-6">
+              {editingRubric.id ? 'Sửa tiêu chí' : 'Thêm tiêu chí mới'}
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Tên tiêu chí *</label>
+                <input value={rubricForm.name}
+                  onChange={e => setRubricForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+                  placeholder="VD: Nội dung"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Mô tả / Hướng dẫn chấm</label>
+                <textarea value={rubricForm.description}
+                  onChange={e => setRubricForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-primary/30 outline-none resize-y min-h-[80px]"
+                  placeholder="Mô tả ngắn gọn cách đánh giá tiêu chí này..."
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Trọng số: <span className="text-primary font-bold">{rubricForm.weight}%</span>
+                </label>
+                <input type="range" min="5" max="100" step="5"
+                  value={rubricForm.weight}
+                  onChange={e => setRubricForm(f => ({ ...f, weight: Number(e.target.value) }))}
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                  <span>5%</span><span>50%</span><span>100%</span>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Gợi ý cho AI (prompt hint)</label>
+                <textarea value={rubricForm.hintPrompt}
+                  onChange={e => setRubricForm(f => ({ ...f, hintPrompt: e.target.value }))}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-primary/30 outline-none resize-y min-h-[80px]"
+                  placeholder="VD: Trừ điểm nếu lạc đề, thiếu dẫn chứng..."
+                />
+              </div>
             </div>
-
-            {/* Rubric 3 */}
-            <div className="bg-white/80 p-6 rounded-2xl border border-tertiary/20 hover:shadow-xl hover:-translate-y-1 transition-all group">
-               <div className="flex justify-between items-start mb-4">
-                 <span className="material-symbols-outlined text-tertiary text-3xl">edit_note</span>
-                 <span className="bg-tertiary/10 text-tertiary text-lg font-black font-mono px-3 py-1 rounded-xl">20%</span>
-               </div>
-               <h4 className="font-headline font-bold text-lg text-on-surface mb-2">Diễn đạt & Từ vựng</h4>
-               <p className="text-sm text-outline mb-6 leading-relaxed">Ưu tiên vốn từ vựng phong phú, sử dụng biểu cảm chính xác, không mắc lỗi chính tả, câu cú mượt mà.</p>
-               
-               <div className="mt-auto space-y-3">
-                 <input type="range" min="0" max="100" defaultValue="20" className="w-full accent-tertiary" />
-               </div>
-               <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between">
-                 <button className="text-[11px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-wider transition-colors">XÓA</button>
-                 <button className="text-[11px] font-bold text-primary hover:underline uppercase tracking-wider">CẤU HÌNH PROMPT</button>
-               </div>
-            </div>
-
-            {/* Rubric 4 */}
-            <div className="bg-white/80 p-6 rounded-2xl border border-amber-500/20 hover:shadow-xl hover:-translate-y-1 transition-all group">
-               <div className="flex justify-between items-start mb-4">
-                 <span className="material-symbols-outlined text-amber-500 text-3xl">lightbulb</span>
-                 <span className="bg-amber-500/10 text-amber-600 text-lg font-black font-mono px-3 py-1 rounded-xl">10%</span>
-               </div>
-               <h4 className="font-headline font-bold text-lg text-on-surface mb-2">Độ Sáng tạo</h4>
-               <p className="text-sm text-outline mb-6 leading-relaxed">Khuyến khích góc nhìn mới mẻ, liên hệ thực tiễn đắt giá, hoặc sử dụng các hình tượng so sánh thú vị.</p>
-               
-               <div className="mt-auto space-y-3">
-                 <input type="range" min="0" max="100" defaultValue="10" className="w-full accent-amber-500" />
-               </div>
-               <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between">
-                 <button className="text-[11px] font-bold text-slate-400 hover:text-red-500 uppercase tracking-wider transition-colors">XÓA</button>
-                 <button className="text-[11px] font-bold text-primary hover:underline uppercase tracking-wider">CẤU HÌNH PROMPT</button>
-               </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setEditingRubric(null)}
+                className="flex-1 py-2.5 border border-outline-variant/30 rounded-xl font-semibold text-sm hover:bg-surface-container-low transition-colors">
+                Hủy
+              </button>
+              <button
+                onClick={editingRubric.id ? handleSaveRubric : handleCreateRubric}
+                disabled={saving || !rubricForm.name.trim()}
+                className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 disabled:opacity-50 text-sm transition-all"
+              >
+                {saving ? 'Đang lưu…' : editingRubric.id ? 'Lưu' : 'Thêm mới'}
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import useSWR from 'swr';
-import { fetcher, formatDate } from '../../lib/fetcher';
+import { fetcher } from '../../lib/fetcher';
+import { formatDate } from '../../lib/utils';
 import type { Submission } from '../../types/api';
 
 export default function StudentResultsPage() {

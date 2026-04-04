@@ -1,202 +1,317 @@
-﻿import React from 'react';
+import React, { useState } from 'react';
+import useSWR from 'swr';
+import { fetcher } from '../../lib/fetcher';
 import { useAuth } from '../../contexts/AuthContext';
+
+const GRADE_CONFIG = [
+  { label: 'Yếu',        min: 0,    max: 5,    color: '#ef4444' },
+  { label: 'Trung bình', min: 5,    max: 6.5,  color: '#f59e0b' },
+  { label: 'Khá',        min: 6.5,  max: 8,    color: '#3b82f6' },
+  { label: 'Giỏi',       min: 8,    max: 8.5,  color: '#22c55e' },
+  { label: 'Xuất sắc',   min: 8.5,  max: 11,   color: '#7c3aed' },
+];
+
+function getGradeColor(avg: number | null) {
+  if (avg == null) return null;
+  return GRADE_CONFIG.find(g => avg >= g.min && avg < g.max) ?? GRADE_CONFIG[GRADE_CONFIG.length - 1];
+}
+
+function formatDate(str: string) {
+  try {
+    const d = new Date(str);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  } catch { return str || '—'; }
+}
+
+interface ScoreHistoryRow {
+  id: string;
+  examTitle: string;
+  type: string;
+  aiScore: number | null;
+  teacherScore: number | null;
+  teacherComment: string | null;
+  submittedAt: string;
+}
 
 export default function StudentProfilePage() {
   const { user } = useAuth();
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const { data, isLoading } = useSWR<{
+    studentId: string;
+    avgScore: number | null;
+    gradeLabel: string;
+    skillData: Record<string, number>;
+    scoreHistory: ScoreHistoryRow[];
+  }>('/api/profile', fetcher);
+
+  const avg = data?.avgScore ?? null;
+  const gradeColor = getGradeColor(avg);
+  const skillData = data?.skillData ?? {};
+  const history: ScoreHistoryRow[] = data?.scoreHistory ?? [];
+  const criteria = Object.keys(skillData);
+  const maxSkill = 10;
+
+  // Build radar chart SVG path
+  const radarW = 300, radarH = 300, radarCx = 150, radarCy = 150, radarR = 100;
+  const angleStep = criteria.length > 0 ? (2 * Math.PI / Math.max(criteria.length, 3)) : 0;
+
+  const gridLevels = [0.25, 0.5, 0.75, 1];
+  const axisLines = criteria.map((_, i) => {
+    const angle = angleStep * i - Math.PI / 2;
+    return {
+      x2: radarCx + radarR * Math.cos(angle),
+      y2: radarCy + radarR * Math.sin(angle),
+    };
+  });
+
+  const dataPoints = criteria.map((key, i) => {
+    const val = skillData[key] ?? 0;
+    const angle = angleStep * i - Math.PI / 2;
+    const r = (val / maxSkill) * radarR;
+    return {
+      x: radarCx + r * Math.cos(angle),
+      y: radarCy + r * Math.sin(angle),
+    };
+  });
+
+  const polyPath = dataPoints.length >= 3
+    ? dataPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ') + 'Z'
+    : '';
+
   return (
-    <div className="pt-28 px-12 pb-20 max-w-7xl mx-auto page-enter">
-      {/* Profile Header */}
-      <section className="mb-16 flex items-end gap-10">
-        <div className="relative">
-          <div className="absolute -inset-1 bg-gradient-to-tr from-primary to-secondary rounded-full blur-sm opacity-20"></div>
-          <img 
-            className="relative w-40 h-40 rounded-full object-cover border-4 border-surface shadow-xl" 
-            src="/images/student_portrait.png" 
-            alt={user?.name || 'Học sinh'} 
-          />
-        </div>
-        <div className="pb-2">
-          <span className="font-label text-secondary text-xs font-bold tracking-[0.2em] uppercase mb-2 block">Học viên xuất sắc</span>
-          <h1 className="font-headline text-5xl font-bold text-primary tracking-tight mb-3">{user?.name || 'Học sinh'}</h1>
-          <div className="flex items-center gap-6 text-on-surface-variant">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-sm">mail</span>
-              <span className="font-body text-lg font-medium">{user?.email || '—'}</span>
-            </div>
+    <div className="pt-8 px-10 pb-20 max-w-5xl mx-auto page-enter">
+      {/* Header */}
+      <section className="mb-12">
+        <span className="text-xs font-bold text-secondary uppercase tracking-widest block mb-3">
+          Hồ sơ của tôi
+        </span>
+        <div className="flex items-center gap-6">
+          <div>
+            <h1 className="font-headline text-4xl font-bold text-primary tracking-tight">
+              {user?.name || 'Học sinh'}
+            </h1>
+            {avg != null ? (
+              <div className="flex items-center gap-3 mt-3">
+                <span
+                  className="text-2xl font-headline font-bold"
+                  style={{ color: gradeColor?.color }}
+                >
+                  {avg.toFixed(1)}
+                </span>
+                <span
+                  className="px-3 py-1 rounded-full text-sm font-bold text-white"
+                  style={{ background: gradeColor?.color }}
+                >
+                  {gradeColor?.label}
+                </span>
+              </div>
+            ) : (
+              <p className="text-slate-400 mt-2 text-sm">Chưa có điểm nào.</p>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Top Analysis Row */}
-      <div className="grid grid-cols-12 gap-8 mb-16">
-        {/* Section 1: Bản đồ Kỹ năng */}
-        <section className="col-span-12 lg:col-span-6 bg-white/80 backdrop-blur-md p-10 rounded-2xl border-[0.5px] border-outline-variant/30 shadow-[0_4px_20px_-5px_rgba(26,28,27,0.06)] relative overflow-hidden group">
-          <div className="flex justify-between items-start mb-10 relative z-10">
-            <div>
-              <h3 className="font-headline text-2xl text-primary font-bold">Bản đồ Kỹ năng</h3>
-              <p className="text-on-surface-variant font-label text-[10px] uppercase tracking-widest mt-1 font-bold">Cập nhật sau 12 bài làm</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left: Bản đồ Kỹ năng */}
+        <section className="bg-white/80 backdrop-blur-md rounded-2xl p-8 border border-outline-variant/15">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-headline text-xl font-bold text-primary">Bản đồ Kỹ năng</h2>
+          </div>
+
+          {isLoading ? (
+            <div className="h-64 flex items-center justify-center">
+              <span className="material-symbols-outlined text-4xl text-primary animate-spin">progress_activity</span>
             </div>
-            <span className="material-symbols-outlined text-secondary/30 group-hover:text-secondary/60 transition-colors text-5xl">radar</span>
-          </div>
-          
-          <div className="flex justify-center items-center py-4 relative z-10">
-            {/* Radar Chart SVG Visualization */}
-            <svg className="w-full max-w-sm h-auto transform -rotate-18 drop-shadow-sm" viewBox="0 0 400 400">
-              {/* Grid Lines */}
-              <circle className="text-outline-variant/20" cx="200" cy="200" fill="none" r="160" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4"></circle>
-              <circle className="text-outline-variant/20" cx="200" cy="200" fill="none" r="120" stroke="currentColor" strokeWidth="1" strokeDasharray="4 4"></circle>
-              <circle className="text-outline-variant/20" cx="200" cy="200" fill="none" r="80" stroke="currentColor" strokeWidth="1"></circle>
-              <circle className="text-outline-variant/20" cx="200" cy="200" fill="none" r="40" stroke="currentColor" strokeWidth="1"></circle>
-              
-              {/* Axes */}
-              <line className="text-outline-variant/30" stroke="currentColor" x1="200" x2="200" y1="200" y2="40"></line>
-              <line className="text-outline-variant/30" stroke="currentColor" x1="200" x2="352" y1="200" y2="151"></line>
-              <line className="text-outline-variant/30" stroke="currentColor" x1="200" x2="294" y1="200" y2="330"></line>
-              <line className="text-outline-variant/30" stroke="currentColor" x1="200" x2="106" y1="200" y2="330"></line>
-              <line className="text-outline-variant/30" stroke="currentColor" x1="200" x2="48" y1="200" y2="151"></line>
-              
-              {/* Skill Polygon (The Data) */}
-              {/* Points roughly mapped: Đọc hiểu 7.5, Nghị luận 6.0, Phân tích 8.0, Cảm thụ 7.0, Diễn đạt 8.5 */}
-              <polygon className="fill-secondary/10 stroke-primary stroke-2 hover:fill-secondary/20 transition-all duration-500 cursor-pointer" points="200,80 291,170 275,304 125,291 71,158"></polygon>
-              
-              {/* Dots at vertices */}
-              <circle className="fill-primary" cx="200" cy="80" r="4"></circle>
-              <circle className="fill-primary" cx="291" cy="170" r="4"></circle>
-              <circle className="fill-primary" cx="275" cy="304" r="4"></circle>
-              <circle className="fill-primary" cx="125" cy="291" r="4"></circle>
-              <circle className="fill-primary" cx="71" cy="158" r="4"></circle>
-            </svg>
-          </div>
-          
-          {/* Labels Overlay */}
-          <div className="grid grid-cols-5 gap-2 mt-8 text-center text-[10px] font-label font-bold uppercase tracking-tighter text-on-surface-variant relative z-10">
-            <div className="flex flex-col gap-0.5"><span className="opacity-70">Đọc hiểu</span><span className="text-primary text-sm font-bold">7.5</span></div>
-            <div className="flex flex-col gap-0.5"><span className="opacity-70">Nghị luận</span><span className="text-primary text-sm font-bold">6.0</span></div>
-            <div className="flex flex-col gap-0.5"><span className="opacity-70">Phân tích</span><span className="text-primary text-sm font-bold">8.0</span></div>
-            <div className="flex flex-col gap-0.5"><span className="opacity-70">Cảm thụ</span><span className="text-primary text-sm font-bold">7.0</span></div>
-            <div className="flex flex-col gap-0.5"><span className="opacity-70">Diễn đạt</span><span className="text-primary text-sm font-bold">8.5</span></div>
-          </div>
-          
-          {/* Decorative motif */}
-          <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-gradient-to-tr from-primary/5 to-transparent rounded-full blur-3xl pointer-events-none"></div>
+          ) : criteria.length === 0 ? (
+            <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-center">
+              <span className="material-symbols-outlined text-5xl mb-3 opacity-30">radar</span>
+              <p className="text-sm">Chưa có dữ liệu kỹ năng.<br/>Hãy nộp bài để AI phân tích.</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              <svg width={radarW} height={radarH} viewBox={`0 0 ${radarW} ${radarH}`}>
+                {/* Grid rings */}
+                {gridLevels.map(level => (
+                  <polygon
+                    key={level}
+                    points={criteria.map((_, i) => {
+                      const angle = angleStep * i - Math.PI / 2;
+                      return `${radarCx + radarR * level * Math.cos(angle)},${radarCy + radarR * level * Math.sin(angle)}`;
+                    }).join(' ')}
+                    fill="none"
+                    stroke="#e2e8f0"
+                    strokeWidth="1"
+                  />
+                ))}
+                {/* Axes */}
+                {axisLines.map((line, i) => (
+                  <line key={i} x1={radarCx} y1={radarCy} x2={line.x2} y2={line.y2} stroke="#e2e8f0" strokeWidth="1" />
+                ))}
+                {/* Data polygon */}
+                {dataPoints.length >= 3 && (
+                  <polygon
+                    points={dataPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                    fill="#326286"
+                    fillOpacity="0.15"
+                    stroke="#326286"
+                    strokeWidth="2"
+                  />
+                )}
+                {/* Data dots */}
+                {dataPoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r="4" fill="#326286" />
+                ))}
+                {/* Labels */}
+                {criteria.map((key, i) => {
+                  const angle = angleStep * i - Math.PI / 2;
+                  const lx = radarCx + (radarR + 22) * Math.cos(angle);
+                  const ly = radarCy + (radarR + 22) * Math.sin(angle);
+                  const val = skillData[key] ?? 0;
+                  return (
+                    <text key={key} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle"
+                      fontSize="11" fill="#475569" fontWeight="600" fontFamily="inherit">
+                      {key.length > 12 ? key.slice(0, 11) + '…' : key}
+                    </text>
+                  );
+                })}
+              </svg>
+
+              {/* Criteria list */}
+              <div className="w-full mt-4 space-y-2">
+                {criteria.map(key => (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-600">{key}</span>
+                    <span className="text-sm font-bold text-primary">
+                      {skillData[key]?.toFixed(1)} / {maxSkill}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
-        {/* Section 2: Phân tích AI */}
-        <section className="col-span-12 lg:col-span-6 bg-white/80 backdrop-blur-md p-10 rounded-2xl border-[0.5px] border-outline-variant/30 flex flex-col justify-between shadow-[0_4px_20px_-5px_rgba(26,28,27,0.06)]">
-          <div>
-            <div className="flex items-center gap-3 mb-8">
-              <span className="material-symbols-outlined text-secondary text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>psychology</span>
-              <h3 className="font-headline text-2xl text-primary font-bold">Phân tích AI</h3>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="flex gap-4 group cursor-default">
-                <div className="w-1 bg-secondary/80 rounded-full group-hover:w-1.5 transition-all group-hover:bg-secondary"></div>
-                <div>
-                  <p className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold mb-1">Thiên hướng viết</p>
-                  <p className="text-on-surface text-lg leading-relaxed font-medium">Giàu cảm xúc, ngôn ngữ sáng tạo</p>
-                </div>
-              </div>
-              
-              <div className="flex gap-4 group cursor-default">
-                <div className="w-1 bg-secondary/80 rounded-full group-hover:w-1.5 transition-all group-hover:bg-secondary"></div>
-                <div>
-                  <p className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold mb-1">Điểm mạnh</p>
-                  <p className="text-on-surface text-lg leading-relaxed font-medium">Diễn đạt mạch lạc, cảm thụ tốt</p>
-                </div>
-              </div>
-              
-              <div className="flex gap-4 group cursor-default">
-                <div className="w-1 bg-tertiary/60 rounded-full group-hover:w-1.5 transition-all group-hover:bg-tertiary"></div>
-                <div>
-                  <p className="font-label text-[10px] uppercase tracking-widest text-tertiary font-bold mb-1">Cần cải thiện</p>
-                  <p className="text-on-surface text-lg leading-relaxed font-medium">Bổ sung dẫn chứng, lập luận logic hơn</p>
-                </div>
-              </div>
-            </div>
+        {/* Right: Lịch sử điểm */}
+        <section className="bg-white/80 backdrop-blur-md rounded-2xl p-8 border border-outline-variant/15">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="font-headline text-xl font-bold text-primary">Lịch sử điểm số</h2>
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="text-xs font-bold text-secondary hover:underline uppercase tracking-wider"
+            >
+              Soi lại lịch sử
+            </button>
           </div>
-          
-          <div className="mt-10 p-6 bg-gradient-to-r from-secondary/10 to-transparent rounded-xl border-l-4 border-secondary shadow-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="material-symbols-outlined text-secondary text-sm">auto_awesome</span>
-              <p className="font-label text-[10px] uppercase tracking-widest font-bold text-secondary">Gợi ý lộ trình</p>
+
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}
             </div>
-            <p className="text-primary italic font-headline leading-relaxed">
-              "Tập trung luyện dạng Nghị luận xã hội trong 2 tuần tới để tối ưu hóa khả năng lập luận."
-            </p>
-          </div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <span className="material-symbols-outlined text-5xl mb-3 block opacity-30">history</span>
+              <p className="text-sm">Chưa có bài nộp nào.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {history.slice(0, 5).map(row => {
+                const score = row.teacherScore ?? row.aiScore;
+                const gc = getGradeColor(score ?? null);
+                return (
+                  <div key={row.id} className="p-4 bg-surface-container-low rounded-xl">
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-sm font-semibold text-primary leading-tight">{row.examTitle}</span>
+                      <span className="text-lg font-headline font-bold" style={{ color: gc?.color }}>
+                        {score != null ? score.toFixed(1) : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-slate-400">{formatDate(row.submittedAt)}</span>
+                      <span className="text-[11px] font-medium" style={{ color: gc?.color }}>
+                        {gc?.label}
+                      </span>
+                    </div>
+                    {row.teacherComment && (
+                      <p className="text-xs text-slate-500 mt-1 italic line-clamp-2">{row.teacherComment}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
 
-      {/* Section 3: Lịch sử Điểm (Full Width) */}
-      <section className="w-full bg-white/80 backdrop-blur-md p-10 rounded-2xl shadow-[0_12px_40px_-10px_rgba(26,28,27,0.06)] border-[0.5px] border-outline-variant/30">
-        <div className="flex justify-between items-center mb-12">
-          <div>
-            <h3 className="font-headline text-2xl text-primary font-bold">Lịch sử Điểm số</h3>
-            <p className="text-on-surface-variant font-label text-[10px] font-bold uppercase tracking-widest mt-1">Học kỳ 1 • 2023-2024</p>
-          </div>
-          <div className="flex gap-8">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-secondary shadow-sm"></span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">Bài tập</span>
+      {/* History Timeline Modal */}
+      {historyOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setHistoryOpen(false)}
+        >
+          <div
+            className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center px-8 py-5 border-b border-outline-variant/20">
+              <h3 className="font-headline text-xl font-bold text-primary">Lịch sử điểm số</h3>
+              <button onClick={() => setHistoryOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors">
+                <span className="material-symbols-outlined text-slate-400">close</span>
+              </button>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-primary shadow-sm"></span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-primary">Bài thi</span>
+            <div className="overflow-y-auto flex-1 px-8 py-6 space-y-4">
+              {history.length === 0 ? (
+                <p className="text-center text-slate-400 py-12">Chưa có bài nộp nào.</p>
+              ) : (
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-5 top-0 bottom-0 w-px bg-outline-variant/30" />
+                  {history.map((row, i) => {
+                    const score = row.teacherScore ?? row.aiScore;
+                    const gc = getGradeColor(score ?? null);
+                    return (
+                      <div key={row.id} className="relative pl-12 pb-6">
+                        <div
+                          className="absolute left-2.5 w-5 h-5 rounded-full border-2 border-white shadow"
+                          style={{ background: gc?.color || '#94a3b8', top: '4px' }}
+                        />
+                        <div className="bg-surface-container-low rounded-xl p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-semibold text-primary text-sm">{row.examTitle}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">
+                                {formatDate(row.submittedAt)} · {row.type === 'exam' ? 'Đề thi' : 'Bài tập'}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xl font-headline font-bold" style={{ color: gc?.color }}>
+                                {score != null ? score.toFixed(1) : '—'}
+                              </span>
+                              {row.teacherScore != null && row.aiScore != null && (
+                                <p className="text-[10px] text-slate-400">
+                                  AI: {row.aiScore.toFixed(1)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {row.teacherComment && (
+                            <p className="text-xs text-slate-500 italic leading-relaxed">
+                              "{row.teacherComment.slice(0, 120)}{row.teacherComment.length > 120 ? '…' : ''}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
-
-        <div className="relative h-72 w-full pt-4 pr-4">
-          {/* Simple Vector-based line chart simulation */}
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 1000 200" preserveAspectRatio="none">
-            {/* Grid */}
-            <line className="text-outline-variant/30" stroke="currentColor" strokeWidth="0.5" x1="0" x2="1000" y1="0" y2="0"></line>
-            <line className="text-outline-variant/30" stroke="currentColor" strokeWidth="0.5" x1="0" x2="1000" y1="50" y2="50"></line>
-            <line className="text-outline-variant/30" stroke="currentColor" strokeWidth="0.5" x1="0" x2="1000" y1="100" y2="100"></line>
-            <line className="text-outline-variant/30" stroke="currentColor" strokeWidth="0.5" x1="0" x2="1000" y1="150" y2="150"></line>
-            <line className="text-outline-variant/60" stroke="currentColor" strokeWidth="1" x1="0" x2="1000" y1="200" y2="200"></line>
-            
-            {/* Background gradient under the primary line */}
-            <path d="M 0,200 L 0,100 L 200,90 L 400,95 L 600,60 L 800,70 L 1000,40 L 1000,200 Z" fill="url(#blue-gradient)" opacity="0.1"></path>
-            
-            <defs>
-              <linearGradient id="blue-gradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#003857"></stop>
-                <stop offset="100%" stopColor="#003857" stopOpacity="0"></stop>
-              </linearGradient>
-            </defs>
-            
-            {/* Bài thi (Primary) - Steadier line */}
-            <path d="M 0,100 L 200,90 L 400,95 L 600,60 L 800,70 L 1000,40" fill="none" stroke="#003857" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" className="drop-shadow-sm"></path>
-            
-            {/* Bài tập (Secondary) - More volatile */}
-            <path d="M 0,150 L 100,120 L 200,130 L 300,80 L 400,100 L 500,60 L 600,75 L 700,50 L 800,90 L 900,45 L 1000,30" fill="none" stroke="#006b58" strokeDasharray="6 4" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" className="opacity-70"></path>
-            
-            {/* Data Points */}
-            <circle className="fill-primary stroke-white stroke-2 shadow-sm" cx="600" cy="60" r="5"></circle>
-            <circle className="fill-primary stroke-white stroke-2 shadow-sm" cx="1000" cy="40" r="5"></circle>
-            <circle className="fill-secondary stroke-white stroke-2 shadow-sm" cx="700" cy="50" r="4"></circle>
-          </svg>
-          
-          {/* X-Axis Labels */}
-          <div className="flex justify-between mt-6 text-[10px] font-label font-bold text-outline uppercase tracking-widest pl-2">
-            <span>Tháng 9</span>
-            <span>Tháng 10</span>
-            <span>Tháng 11</span>
-            <span>Tháng 12</span>
-          </div>
-        </div>
-      </section>
-
-      {/* Academic Footer Accent */}
-      <footer className="mt-20 pt-10 border-t border-outline-variant/20 flex justify-between items-center opacity-50 grayscale hover:grayscale-0 transition-all">
-        <div className="flex items-center gap-4">
-          <span className="font-headline font-bold text-primary">Văn Học AI</span>
-          <span className="text-[10px] font-label font-bold text-secondary uppercase tracking-[0.2em] border-l border-primary/20 pl-4">Hệ thống phân tích ngôn ngữ</span>
-        </div>
-        <p className="text-[10px] font-label font-bold tracking-widest uppercase">© 2024 Digital Scholar</p>
-      </footer>
+      )}
     </div>
   );
 }

@@ -83,7 +83,7 @@ export async function onRequestPost({ request, env, data }) {
     for (let i = 0; i < parsedQuestions.length; i++) {
       const q = parsedQuestions[i];
       await env.DB.prepare(
-        `INSERT INTO questions (id, exam_id, content, type, points, rubric_content, "order")
+        `INSERT INTO questions (id, exam_id, content, type, points, rubric, order_index)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         crypto.randomUUID(),

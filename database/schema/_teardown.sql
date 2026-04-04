@@ -1,0 +1,27 @@
+-- _teardown.sql — Drop all tables in reverse dependency order
+PRAGMA foreign_keys = OFF;
+DROP TABLE IF EXISTS multiverse_nodes;
+DROP TABLE IF EXISTS student_multiverse;
+DROP TABLE IF EXISTS ai_warnings;
+DROP TABLE IF EXISTS student_profiles;
+DROP TABLE IF EXISTS skill_assessments;
+DROP TABLE IF EXISTS rubric_criteria;
+DROP TABLE IF EXISTS submission_answers;
+DROP TABLE IF EXISTS submissions;
+DROP TABLE IF EXISTS questions;
+DROP TABLE IF EXISTS exams;
+DROP TABLE IF EXISTS activity_logs;
+DROP TABLE IF EXISTS token_logs;
+DROP TABLE IF EXISTS logs;
+DROP TABLE IF EXISTS characters;
+DROP TABLE IF EXISTS storyline_nodes;
+DROP TABLE IF EXISTS storylines;
+DROP TABLE IF EXISTS chat_messages;
+DROP TABLE IF EXISTS chat_threads;
+DROP TABLE IF EXISTS work_chunks;
+DROP TABLE IF EXISTS work_analysis;
+DROP TABLE IF EXISTS works;
+DROP TABLE IF EXISTS class_students;
+DROP TABLE IF EXISTS classes;
+DROP TABLE IF EXISTS users;
+PRAGMA foreign_keys = ON;

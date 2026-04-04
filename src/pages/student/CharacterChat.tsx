@@ -54,11 +54,10 @@ export default function CharacterChatPage() {
   const handleSelectChar = async (id: string) => {
     setSelectedChar(id);
     try {
-      const charName = work?.characters.find((c) => c.id === id)?.name || id;
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [], characterId: charName }),
+        body: JSON.stringify({ messages: [], characterId: id }),
       });
       if (res.headers.has("X-Thread-Id")) {
         setThreadId(res.headers.get("X-Thread-Id")!);
@@ -89,7 +88,7 @@ export default function CharacterChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: currentMessages, characterId: character?.name, threadId }),
+        body: JSON.stringify({ messages: currentMessages, characterId: selectedChar, threadId }),
       });
       if (!res.body) throw new Error("No response body");
       const reader = res.body.getReader();
@@ -130,7 +129,11 @@ export default function CharacterChatPage() {
             <div className="col-span-4 p-12 text-center text-outline">Đang tải tác phẩm...</div>
           )}
           {!isLoading && works.length === 0 && (
-            <div className="col-span-4 p-12 text-center text-outline">Chưa có tác phẩm nào được phân tích.</div>
+            <div className="col-span-4 p-12 text-center text-outline">
+              <span className="material-symbols-outlined text-4xl mb-4 block">psychology</span>
+              <p className="font-headline font-bold">Chưa có nhân vật nào được tạo ra.</p>
+              <p className="text-sm mt-2">Giáo viên chưa tạo nhân vật AI nào. Hãy liên hệ giáo viên để được hỗ trợ.</p>
+            </div>
           )}
           {works.map((w) => (
             <div

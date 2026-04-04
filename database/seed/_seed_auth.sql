@@ -1,3 +1,0 @@
-UPDATE users SET password_hash = 'vietlit2024:ccae0d4bb77946337eb7aa68d4eab37bd809319b91c5a2feca66a48e87d690f9380e3ac604cb43f6ae10b56af8a2f82f9412539a89eff6cfa02b00d302719725' WHERE username = 'an';
-UPDATE users SET password_hash = 'vietlit2024:b4d8867b9fc398b565caf4f548a5d08e95f66fd29537ff5fc4880776df429982e155f7e4cff8ca163490e81b81e253df1066d0156776792f40076426d723867b' WHERE username = 'mai';
-INSERT OR IGNORE INTO users (id, name, email, role, username, password_hash, created_at) VALUES ('admin-1', 'Quản trị viên', 'admin@vanhocai.edu.vn', 'admin', 'admin', 'vietlit2024:68d756012e293d990c445e95f4e44cf5832f30e72488cfc540887409311d53e9c5b21c3b83b3305c695d3cc8ab71bbf30eecff1739432ed50b44a96792ccdce2', datetime('now'));

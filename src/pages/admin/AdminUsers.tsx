@@ -3,18 +3,16 @@ import useSWR from 'swr';
 import { fetcher } from '../../lib/fetcher';
 import type { User } from '../../types/api';
 
-type RoleFilter = 'all' | 'teacher' | 'student' | 'admin';
+type RoleFilter = 'all' | 'teacher' | 'admin';
 
 const ROLE_META = {
   all:     { label: 'Tất cả',     icon: 'group',          color: '#326286', bg: 'bg-[#326286]/10' },
   teacher: { label: 'Giáo viên',  icon: 'school',         color: '#005142', bg: 'bg-[#005142]/10' },
-  student: { label: 'Học sinh',   icon: 'person',          color: '#C9A84C', bg: 'bg-[#C9A84C]/10' },
   admin:   { label: 'Quản trị',   icon: 'admin_panel_settings', color: '#7c3aed', bg: 'bg-purple-100' },
 } as const;
 
 const ROLE_BADGE = {
   teacher: { bg: 'bg-[#005142]/10', text: 'text-[#005142]' },
-  student: { bg: 'bg-[#C9A84C]/10', text: 'text-[#C9A84C]' },
   admin:   { bg: 'bg-purple-100',   text: 'text-purple-700' },
 } as const;
 
@@ -29,12 +27,17 @@ export default function AdminUsersPage() {
   const [submitError, setSubmitError] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [resetUser, setResetUser] = useState<User | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState('');
+  const [resetting, setResetting] = useState(false);
 
-  const filtered = filter === 'all' ? users : users.filter(u => u.role === filter);
+  const filtered = filter === 'all'
+    ? users.filter(u => u.role === 'teacher' || u.role === 'admin')
+    : users.filter(u => u.role === filter);
   const counts = {
-    all: users.length,
+    all: users.filter(u => u.role === 'teacher' || u.role === 'admin').length,
     teacher: users.filter(u => u.role === 'teacher').length,
-    student: users.filter(u => u.role === 'student').length,
     admin: users.filter(u => u.role === 'admin').length,
   };
 
@@ -78,10 +81,15 @@ export default function AdminUsersPage() {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
-      await fetch(`/api/admin/users?id=${confirmDeleteId}`, { method: 'DELETE' });
-      mutate();
+      const res = await fetch(`/api/admin/users?id=${confirmDeleteId}`, { method: 'DELETE' });
+      if (res.ok) {
+        mutate();
+        setConfirmDeleteId(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Xóa thất bại');
+      }
     } finally {
-      setConfirmDeleteId(null);
       setDeleting(false);
     }
   };
@@ -160,7 +168,7 @@ export default function AdminUsersPage() {
                   <td className="p-4 text-outline">{u.email}</td>
                   <td className="p-4">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.bg} ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.text}`}>
-                      {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Giáo viên' : 'Học sinh'}
+                      {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Giáo viên' : u.role}
                     </span>
                   </td>
                   <td className="p-4 text-outline text-xs">{u.createdAt?.slice(0, 10)}</td>
@@ -169,6 +177,10 @@ export default function AdminUsersPage() {
                       <button onClick={() => openEdit(u)}
                         className="p-2 hover:bg-[#326286]/10 rounded-lg transition-colors text-primary" title="Sửa">
                         <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
+                      <button onClick={() => { setResetUser(u); setResetPassword(''); setResetError(''); }}
+                        className="p-2 hover:bg-[#C9A84C]/10 rounded-lg transition-colors text-[#C9A84C]" title="Đặt lại mật khẩu">
+                        <span className="material-symbols-outlined text-sm">key</span>
                       </button>
                       <button onClick={() => setConfirmDeleteId(u.id)}
                         className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-400" title="Xóa">
@@ -186,7 +198,7 @@ export default function AdminUsersPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <h3 className="text-xl font-headline font-bold text-primary mb-6">
               {editUser ? 'Sửa Người dùng' : 'Thêm Người dùng'}
             </h3>
@@ -233,10 +245,74 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {/* Reset Password Modal */}
+      {resetUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setResetUser(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-[#C9A84C] text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>key</span>
+              <h3 className="text-xl font-headline font-bold text-primary">Đặt lại mật khẩu</h3>
+            </div>
+            <p className="text-sm text-outline mb-5">
+              Đặt mật khẩu mới cho <strong>{resetUser.name}</strong>. Hãy gửi mật khẩu này cho người dùng qua kênh phù hợp (Zalo, email...).
+            </p>
+            {resetError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm mb-4">{resetError}</div>
+            )}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setResetError('');
+              setResetting(true);
+              try {
+                const res = await fetch('/api/admin/users', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: resetUser.id, password: resetPassword }),
+                });
+                if (res.ok) {
+                  mutate();
+                  setResetUser(null);
+                } else {
+                  const err = await res.json().catch(() => ({}));
+                  setResetError(err.error || 'Thao tác thất bại.');
+                }
+              } finally {
+                setResetting(false);
+              }
+            }}>
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-outline uppercase mb-1">Mật khẩu mới</label>
+                <input
+                  type="text"
+                  value={resetPassword}
+                  onChange={e => setResetPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu mới..."
+                  minLength={6}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all"
+                  autoFocus
+                  required
+                />
+                <p className="text-[10px] text-outline mt-1">Tối thiểu 6 ký tự</p>
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setResetUser(null)}
+                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
+                  Hủy
+                </button>
+                <button type="submit" disabled={resetting}
+                  className="flex-1 bg-[#C9A84C] text-white py-2.5 rounded-xl font-semibold hover:bg-[#C9A84C]/90 transition-colors disabled:opacity-50">
+                  {resetting ? 'Đang lưu...' : 'Đặt lại'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirm */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl">
             <h3 className="text-xl font-headline font-bold text-red-500 mb-2">Xác nhận xóa</h3>
             <p className="text-sm text-slate-600 mb-6">Bạn có chắc muốn xóa người dùng này? Hành động không thể hoàn tác.</p>
             <div className="flex gap-3">

@@ -105,22 +105,6 @@ export default function CharactersPage() {
     setShowAddForm(false);
   };
 
-  // ── Format timestamp ────────────────────────────────────────────────────────
-  const formatTime = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      const now = new Date();
-      const diffMs = now.getTime() - d.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-      if (diffMins < 60) return `${diffMins} phút trước`;
-      const diffHrs = Math.floor(diffMins / 60);
-      if (diffHrs < 24) return `${diffHrs} giờ trước`;
-      return d.toLocaleDateString('vi-VN');
-    } catch {
-      return iso;
-    }
-  };
-
   return (
     <div className="max-w-7xl mx-auto space-y-12 page-enter">
       {/* Page Header */}

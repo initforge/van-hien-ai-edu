@@ -18,25 +18,8 @@ export default function StudentDashboardPage() {
 
   return (
     <>
-      {/* TopAppBar */}
-      <header className="fixed top-0 right-0 w-[calc(100%-16rem)] z-30 bg-[#f9f9f6]/80 dark:bg-slate-900/80 backdrop-blur-xl flex justify-between items-center px-8 h-16">
-        <div className="flex items-center flex-1 max-w-xl">
-          <div className="relative w-full group">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline group-focus-within:text-primary transition-colors">search</span>
-            <input className="w-full pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-full text-sm focus:ring-1 focus:ring-primary-container transition-all" placeholder="Tìm kiếm bài học, nhân vật..." type="text" />
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-500 hover:text-[#003857] transition-colors">
-              <span className="material-symbols-outlined">notifications</span>
-              <span className="absolute top-2 right-2 w-2 h-2 bg-tertiary rounded-full"></span>
-            </button>
-        </div>
-      </header>
-
-      {/* Page Content */}
-      <div className="pt-24 pb-12 px-10 max-w-6xl mx-auto">
+      {/* Page Content — no top bar, sidebar provides context */}
+      <div className="pt-8 pb-12 px-10 max-w-6xl mx-auto">
         {/* Greeting */}
         <section className="mb-12">
           <h2 className="font-headline text-4xl font-extrabold text-primary tracking-tight mb-2">Chào buổi sáng, {user?.name || 'bạn'}!</h2>

@@ -4,11 +4,13 @@ import { useAuth, isActiveNav } from "./sidebarUtils";
 
 const NAV_ITEMS = [
   { name: "Tổng quan", href: "/teacher/dashboard", icon: "dashboard" },
+  { name: "Lớp học", href: "/teacher/classes", icon: "school" },
   { name: "Thư viện Tác phẩm", href: "/teacher/library", icon: "auto_stories" },
   { name: "Ngân hàng Đề", href: "/teacher/exam-bank", icon: "quiz" },
   { name: "Chấm bài", href: "/teacher/grading", icon: "history_edu" },
   { name: "Nhân vật AI", href: "/teacher/characters", icon: "psychology" },
   { name: "Phân tích AI", href: "/teacher/ai-review", icon: "analytics" },
+  { name: "Đa Vũ Trụ", href: "/teacher/multiverse", icon: "hub" },
 ];
 
 export function TeacherSidebar() {

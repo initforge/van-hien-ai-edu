@@ -30,8 +30,8 @@ export async function onRequestGet({ request, env, data }) {
 
     // Get questions for this exam
     const questions = await env.DB.prepare(
-      `SELECT id, content, type, points, "order" AS orderIndex FROM questions
-       WHERE exam_id = ? ORDER BY "order" ASC`
+      `SELECT id, content, type, points, order_index FROM questions
+       WHERE exam_id = ? ORDER BY order_index ASC`
     ).bind(examId).all();
 
     return cachedJson({

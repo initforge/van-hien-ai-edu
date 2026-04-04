@@ -1,12 +1,18 @@
 /**
  * Shared data fetcher for SWR — wraps fetch with JSON parsing.
- * Use for all SWR fetcher props.
+ * IMPORTANT: Always include credentials (cookie) so JWT auth works.
  */
 export const fetcher = (url: string) =>
-  fetch(url).then((res) => {
+  fetch(url, { credentials: 'include' }).then((res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   });
+
+/** Default SWR options: disable auto-revalidation on window focus */
+export const SWR_OPTS = { revalidateOnFocus: false, credentials: 'include' as RequestCredentials };
+
+/** SWR options for pages needing fresh data on focus (e.g. exam timer) */
+export const SWR_OPTS_REALTIME = { revalidateOnFocus: true, revalidateOnReconnect: true };
 
 /**
  * Formats an ISO date string as DD/MM/YYYY.

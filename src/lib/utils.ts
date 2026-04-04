@@ -1,4 +1,20 @@
 /**
+ * Formats an ISO timestamp as dd/mm/yyyy or relative if today.
+ */
+export function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) {
+      return `Hôm nay, ${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+/**
  * Formats an ISO timestamp as a relative "X phút/giờ trước" string.
  */
 export function formatTimeAgo(iso: string): string {

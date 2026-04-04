@@ -1,333 +1,320 @@
-﻿import React, { useState } from "react";
-import { STORYLINES } from "../../constants/storylines";
+import React, { useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "../../lib/fetcher";
+
+interface MultiverseStory {
+  id: string;
+  title: string | null;
+  workTitle: string;
+  branch_point: string;
+  content: string | null;
+  moral: string | null;
+  generation_method: string;
+  depth: number;
+  parent_id: string | null;
+  created_at: string;
+}
+
+interface Work {
+  id: string;
+  title: string;
+  author: string;
+}
+
+function formatTimeAgo(dateStr: string) {
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 60) return `${min}p trước`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}g trước`;
+    return `${Math.floor(h / 24)}d trước`;
+  } catch { return ''; }
+}
 
 export default function MultiversePage() {
-  const [selectedStoryline, setSelectedStoryline] = useState(STORYLINES[0].id);
-  const [expandedNode, setExpandedNode] = useState<string | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selected, setSelected] = useState<MultiverseStory | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
-  const [showWritePrompt, setShowWritePrompt] = useState(false);
+  const [genMethod, setGenMethod] = useState<'manual' | 'ai_full'>('ai_full');
+  const [branchPoint, setBranchPoint] = useState('');
+  const [selectedWork, setSelectedWork] = useState<Work | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
-  const storyline = STORYLINES.find((s) => s.id === selectedStoryline)!;
-  const expandedNodeData = storyline.nodes.find((n) => n.id === expandedNode);
+  const { data: mvData, mutate: mutateMv } = useSWR<{ data: MultiverseStory[] }>(
+    '/api/multiverse', fetcher
+  );
+  const { data: worksData } = useSWR<{ data: Work[] }>('/api/works?analysisStatus=done', fetcher);
+
+  const storylines: MultiverseStory[] = mvData?.data ?? [];
+  const works: Work[] = worksData?.data ?? [];
+
+  const grouped = storylines.reduce<Record<string, MultiverseStory[]>>((acc, s) => {
+    (acc[s.workTitle] = acc[s.workTitle] || []).push(s);
+    return acc;
+  }, {});
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedWork || !branchPoint.trim()) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      const res = await fetch('/api/multiverse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workId: selectedWork.id,
+          branchPoint: branchPoint.trim(),
+          generationMethod: genMethod,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setCreateError(data.error || 'Lỗi.'); return; }
+      setShowCreate(false);
+      setBranchPoint('');
+      setSelectedWork(null);
+      await mutateMv();
+    } catch {
+      setCreateError('Lỗi kết nối.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen pb-32 page-enter">
+    <div className="pt-8 px-8 pb-20 max-w-6xl mx-auto page-enter">
       {/* Header */}
       <div className="flex justify-between items-end mb-10">
         <div>
-          <span className="text-xs font-label tracking-widest text-secondary font-bold uppercase mb-2 block">
+          <span className="text-xs font-bold text-secondary uppercase tracking-widest block mb-2">
             Đa Vũ Trụ Văn học
           </span>
-          <h2 className="text-4xl font-headline font-bold text-primary-container leading-tight">
+          <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">
             Khám phá các kết thúc khác
           </h2>
-          <p className="text-sm text-on-surface-variant mt-2 max-w-xl">
-            Nếu nhân vật chọn con đường khác, câu chuyện sẽ đi về đâu? Hãy tạo và khám phá những vũ trụ song song của văn học.
+          <p className="text-sm text-slate-500 mt-2 max-w-lg">
+            Nếu nhân vật chọn con đường khác, câu chuyện sẽ đi về đâu?
           </p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
-          className="bg-tertiary hover:opacity-90 text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-tertiary/20 active:scale-[0.98]"
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-2 bg-tertiary text-white px-6 py-3 rounded-xl font-bold hover:brightness-110 transition-all shadow-lg shadow-tertiary/20"
         >
-          <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-          <span className="font-headline font-bold text-sm tracking-wide">Tạo storyline mới</span>
+          <span className="material-symbols-outlined">add</span>
+          Tạo storyline mới
         </button>
       </div>
 
-      {/* Storyline Selector — Horizontal Cards */}
-      <div className="flex gap-4 mb-12 overflow-x-auto pb-2">
-        {STORYLINES.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => { setSelectedStoryline(s.id); setExpandedNode(null); setShowCompare(false); }}
-            className={`flex-shrink-0 min-w-[280px] p-5 rounded-2xl text-left transition-all duration-300 ${
-              selectedStoryline === s.id
-                ? "bg-primary-container text-white shadow-xl shadow-primary/20 scale-[1.02]"
-                : "bg-white border-[0.5px] border-outline-variant/30 hover:border-primary/40 hover:shadow-lg hover:-translate-y-1"
-            }`}
-          >
-            <p className={`text-[10px] font-label uppercase tracking-widest mb-2 font-bold ${selectedStoryline === s.id ? "opacity-70" : "text-secondary"}`}>
-              {s.work} · {s.author}
-            </p>
-            <h4 className={`font-headline font-bold text-base leading-snug mb-3 ${selectedStoryline === s.id ? "" : "text-primary"}`}>
-              {s.title}
-            </h4>
-            <div className={`flex justify-between items-center text-xs font-medium ${selectedStoryline === s.id ? "opacity-70" : "text-on-surface-variant"}`}>
-              <span className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[14px]">schedule</span>{s.timeAgo}
-              </span>
-              <span className={`px-2.5 py-1 rounded-full font-bold ${selectedStoryline === s.id ? "bg-white/20" : "bg-surface-container-low"}`}>
-                {s.nodes.length} nhánh
-              </span>
-            </div>
-          </button>
-        ))}
-        {/* Add placeholder */}
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex-shrink-0 min-w-[200px] border-2 border-dashed border-outline-variant/40 rounded-2xl flex flex-col items-center justify-center text-center hover:border-primary/40 hover:bg-primary/5 transition-all group"
-        >
-          <span className="material-symbols-outlined text-3xl text-outline group-hover:text-primary transition-colors mb-2">add_circle</span>
-          <span className="text-sm font-medium text-outline group-hover:text-primary transition-colors">Storyline mới</span>
-        </button>
-      </div>
-
-      {/* ═════════════════════════════════════════════ */}
-      {/* MAIN: Visual Timeline Tree — Full Width      */}
-      {/* ═════════════════════════════════════════════ */}
-      <div className="relative">
-        {/* Vertical connector line */}
-        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary via-[#C9A84C] to-outline-variant/30 -translate-x-1/2 z-0"></div>
-
-        {/* ─── STEP 1: Original Story (Root) ─── */}
-        <div className="relative z-10 flex justify-center mb-8">
-          <div className="w-full max-w-2xl">
-            <div className="p-8 rounded-2xl bg-gradient-to-br from-primary to-primary-container text-white shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-xl"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="material-symbols-outlined text-secondary-fixed" style={{ fontVariationSettings: "'FILL' 1" }}>auto_stories</span>
-                  <span className="text-[10px] font-label tracking-widest uppercase font-bold opacity-80">Cốt truyện nguyên tác</span>
-                </div>
-                <h3 className="font-headline font-bold text-2xl leading-snug mb-2">{storyline.work}</h3>
-                <p className="text-white/80 font-body leading-relaxed">{storyline.rootText}</p>
-              </div>
-            </div>
-          </div>
+      {/* Storyline selector — by work */}
+      {Object.keys(grouped).length === 0 && (
+        <div className="text-center py-20 text-slate-400">
+          <span className="material-symbols-outlined text-6xl mb-4 block opacity-20">hub</span>
+          <p className="font-medium">Chưa có storyline nào.</p>
+          <p className="text-sm mt-1">Nhấn "Tạo storyline mới" để bắt đầu.</p>
         </div>
+      )}
 
-        {/* ─── STEP 2: Branch Point (Diamond) ─── */}
-        <div className="relative z-10 flex justify-center mb-8">
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-white border-4 border-[#C9A84C] rotate-45 flex items-center justify-center shadow-xl">
-              <span className="material-symbols-outlined -rotate-45 text-[#C9A84C] font-bold text-3xl">alt_route</span>
-            </div>
-            <div className="bg-[#fdf8e6] border border-[#C9A84C]/30 p-5 rounded-2xl shadow-lg max-w-md">
-              <span className="text-[10px] font-label font-black text-[#C9A84C] block mb-1 uppercase tracking-widest">
-                Điểm rẽ vũ trụ — Nếu...
-              </span>
-              <p className="font-headline font-bold text-primary-container text-lg leading-snug">
-                {storyline.branchPoint}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ─── STEP 3: Branch Nodes ─── */}
-        <div className="relative z-10 flex justify-center mb-6">
-          {/* Horizontal connector */}
-          <div className="absolute top-12 left-[15%] right-[15%] h-0.5 bg-[#C9A84C]/30 z-0"></div>
-        </div>
-
-        <div className={`grid gap-6 px-4 max-w-6xl mx-auto relative z-10 mb-12 ${
-          storyline.nodes.length === 1 ? "grid-cols-1 max-w-2xl" :
-          storyline.nodes.length === 2 ? "grid-cols-2" :
-          "grid-cols-3"
-        }`}>
-          {storyline.nodes.map((n, i) => (
-            <div key={n.id} className="flex flex-col">
-              {/* Connector dot */}
-              <div className="flex justify-center mb-4">
-                <div className={`w-4 h-4 rounded-full border-4 ${
-                  n.tagColor === "tertiary" ? "border-tertiary bg-white" :
-                  n.tagColor === "primary" ? "border-primary bg-white" :
-                  "border-slate-400 bg-white"
-                } shadow-md`}></div>
-              </div>
-
-              {/* Node Card */}
-              <div
-                onClick={() => setExpandedNode(expandedNode === n.id ? null : n.id)}
-                className={`flex-1 p-6 bg-white rounded-2xl shadow-md border transition-all duration-300 cursor-pointer group ${
-                  expandedNode === n.id
-                    ? "ring-2 ring-primary shadow-xl -translate-y-2 border-primary/30"
-                    : "border-outline-variant/30 hover:shadow-xl hover:-translate-y-1"
+      {Object.entries(grouped).map(([workTitle, items]) => (
+        <div key={workTitle} className="mb-12">
+          <h3 className="font-headline font-bold text-primary text-lg mb-4">{workTitle}</h3>
+          <div className="flex gap-4 overflow-x-auto pb-2">
+            {items.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSelected(selected?.id === s.id ? null : s)}
+                className={`flex-shrink-0 min-w-[260px] text-left p-5 rounded-2xl border transition-all ${
+                  selected?.id === s.id
+                    ? 'bg-primary text-white border-primary shadow-lg'
+                    : 'bg-white border-outline-variant/20 hover:border-primary/40 hover:shadow-md hover:-translate-y-0.5'
                 }`}
               >
-                {/* Tag */}
-                <div className="flex justify-between items-start mb-4">
-                  <span className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 px-3 py-1 rounded-full ${
-                    n.tagColor === "tertiary" ? "text-tertiary bg-tertiary/10" :
-                    n.tagColor === "primary" ? "text-primary bg-primary/10" :
-                    "text-slate-500 bg-slate-100"
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      n.tagColor === "tertiary" ? "bg-tertiary" : n.tagColor === "primary" ? "bg-primary" : "bg-slate-400"
-                    }`}></span>
-                    {n.tag}
-                  </span>
-                  <span className="text-xs text-slate-400 font-medium">Nhánh {i + 1}</span>
+                <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${
+                  selected?.id === s.id ? 'text-white/70' : 'text-secondary'
+                }`}>
+                  {s.generation_method === 'ai_full' ? 'AI tạo' : 'Tự viết'}
+                </p>
+                <p className={`font-headline font-bold leading-snug mb-2 text-sm ${
+                  selected?.id === s.id ? 'text-white' : 'text-primary'
+                }`}>
+                  {s.branch_point.length > 50 ? s.branch_point.slice(0, 50) + '…' : s.branch_point}
+                </p>
+                <div className={`flex items-center justify-between text-xs mt-3 ${
+                  selected?.id === s.id ? 'text-white/60' : 'text-slate-400'
+                }`}>
+                  <span>{formatTimeAgo(s.created_at)}</span>
+                  <span>{s.depth === 0 ? 'Nhánh gốc' : `Độ sâu ${s.depth}`}</span>
                 </div>
-
-                {/* Content */}
-                <p className="font-headline font-bold text-primary-container text-base leading-snug mb-4">{n.text}</p>
-
-                {/* Expand indicator */}
-                <div className="flex items-center justify-between pt-3 border-t border-outline-variant/20">
-                  <span className="text-xs text-slate-400 group-hover:text-primary transition-colors font-medium">
-                    {expandedNode === n.id ? "Thu gọn" : "Xem chi tiết"}
-                  </span>
-                  <span className={`material-symbols-outlined text-slate-400 group-hover:text-primary transition-all duration-300 ${expandedNode === n.id ? "rotate-180" : ""}`}>
-                    expand_more
-                  </span>
-                </div>
-
-                {/* Expanded Detail */}
-                {expandedNode === n.id && (
-                  <div className="mt-4 pt-4 border-t border-outline-variant/20 space-y-4 animate-[fadeIn_0.3s_ease-out]">
-                    <p className="text-sm text-on-surface-variant leading-relaxed italic font-headline">
-                      &quot;{n.detail}&quot;
-                    </p>
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowWritePrompt(true); }}
-                        className="px-4 py-2 bg-primary text-white rounded-lg text-xs font-bold hover:bg-primary-container transition-colors active:scale-[0.98]"
-                      >
-                        <span className="material-symbols-outlined text-[14px] align-middle mr-1">history_edu</span>
-                        Viết bài phân tích
-                      </button>
-                      <button className="px-4 py-2 border border-outline-variant/30 rounded-lg text-xs font-bold text-primary hover:bg-primary/5 transition-colors">
-                        <span className="material-symbols-outlined text-[14px] align-middle mr-1">add</span>
-                        Tạo nhánh con
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+              </button>
+            ))}
+          </div>
         </div>
+      ))}
 
-        {/* Bottom Action Bar —— Sticky at bottom */}
-        <div className="flex justify-center">
-          <div className="bg-white/95 backdrop-blur-xl border border-outline-variant/30 rounded-2xl shadow-[0_-8px_40px_-10px_rgba(26,28,27,0.1)] flex items-center gap-2 py-3 px-4">
-            <button
-              onClick={() => setShowCompare(!showCompare)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all text-sm font-bold ${
-                showCompare ? "bg-primary text-white" : "hover:bg-surface-container-low text-slate-600 hover:text-primary"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[18px]">compare_arrows</span>
-              So sánh nhánh
+      {/* Selected storyline detail */}
+      {selected && (
+        <div className="bg-white rounded-2xl border border-outline-variant/20 p-8 animate-[fadeIn_0.2s_ease-out]">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <span className="text-xs font-bold text-secondary uppercase tracking-wider">{selected.workTitle}</span>
+              <h3 className="font-headline font-bold text-xl text-primary mt-1">{selected.branch_point}</h3>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-slate-400 hover:text-slate-600">
+              <span className="material-symbols-outlined">close</span>
             </button>
-            <div className="h-6 w-px bg-outline-variant/30"></div>
+          </div>
+
+          {selected.content ? (
+            <div className="bg-surface-container-low rounded-xl p-6 mb-4">
+              <p className="font-headline text-base leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-400 italic">Chưa có nội dung.</div>
+          )}
+
+          {selected.moral && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Bài học</p>
+              <p className="font-headline text-primary italic">{selected.moral}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3">
             <button
-              onClick={() => setShowWritePrompt(!showWritePrompt)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl shadow-md transition-all text-sm font-bold active:scale-[0.98] ${
-                showWritePrompt ? "bg-primary text-white" : "bg-gradient-to-r from-tertiary to-tertiary-container text-white hover:shadow-lg"
-              }`}
+              onClick={() => setShowCompare(true)}
+              className="flex-1 py-3 bg-primary/5 text-primary rounded-xl font-bold hover:bg-primary/10 transition-colors text-sm"
             >
-              <span className="material-symbols-outlined text-[18px]">history_edu</span>
-              Viết bài phân tích
+              <span className="material-symbols-outlined text-base align-middle mr-1">compare_arrows</span>
+              So sánh
             </button>
-            <div className="h-6 w-px bg-outline-variant/30"></div>
-            <button className="flex items-center gap-2 px-5 py-2.5 hover:bg-primary/5 rounded-xl transition-all group text-primary font-bold text-sm">
-              <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
-              Xuất PDF
+            <button
+              onClick={() => { setShowCreate(true); setBranchPoint(selected.branch_point + ' — '); }}
+              className="flex-1 py-3 bg-tertiary/5 text-tertiary rounded-xl font-bold hover:bg-tertiary/10 transition-colors text-sm"
+            >
+              <span className="material-symbols-outlined text-base align-middle mr-1">alt_route</span>
+              Tạo nhánh tiếp
             </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ═══ CREATE MODAL ═══ */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-headline text-2xl font-bold text-primary mb-2">Tạo Storyline mới</h3>
-            <p className="text-sm text-slate-500 mb-6">Chọn một tác phẩm và tạo điểm rẽ giả định</p>
-            <div className="space-y-5 mb-8">
+      {/* Create Modal */}
+      {showCreate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowCreate(false)}
+        >
+          <div
+            className="relative z-10 bg-white rounded-2xl p-8 shadow-2xl w-full max-w-md"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-headline text-xl font-bold text-primary mb-6">Tạo storyline mới</h3>
+            <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1 block mb-2">Tác phẩm gốc</label>
-                <select className="w-full bg-surface-container-low/50 border border-outline-variant/30 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all">
-                  <option>Lão Hạc — Nam Cao</option>
-                  <option>Tắt đèn — Ngô Tất Tố</option>
-                  <option>Truyện Kiều — Nguyễn Du</option>
-                  <option>Chiếc lược ngà — Nguyễn Quang Sáng</option>
-                  <option>Người con gái Nam Xương — Nguyễn Dữ</option>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Tác phẩm *</label>
+                <select
+                  value={selectedWork?.id || ''}
+                  onChange={e => setSelectedWork(works.find(w => w.id === e.target.value) || null)}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-primary/30 outline-none"
+                  required
+                >
+                  <option value="">— Chọn tác phẩm —</option>
+                  {works.map(w => (
+                    <option key={w.id} value={w.id}>{w.title} — {w.author}</option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1 block mb-2">Điểm rẽ (Nếu...)</label>
-                <input className="w-full bg-surface-container-low/50 border border-outline-variant/30 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" placeholder="VD: Nếu Vũ Nương không nhảy xuống sông..." />
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Điểm rẽ (Nếu...) *
+                </label>
+                <input
+                  value={branchPoint}
+                  onChange={e => setBranchPoint(e.target.value)}
+                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 outline-none"
+                  placeholder="VD: Nếu Lão Hạc không bán con Vàng..."
+                  required
+                />
               </div>
               <div>
-                <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1 block mb-2">Số nhánh muốn tạo</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Phương thức</label>
                 <div className="flex gap-3">
-                  {[1, 2, 3].map(n => (
-                    <button key={n} className="flex-1 py-3 border border-outline-variant/30 rounded-xl text-sm font-bold text-primary hover:bg-primary hover:text-white transition-all">
-                      {n} nhánh
+                  {(['ai_full', 'manual'] as const).map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setGenMethod(m)}
+                      className={`flex-1 py-2.5 rounded-xl font-semibold text-sm border transition-all ${
+                        genMethod === m
+                          ? 'bg-primary text-white border-primary'
+                          : 'border-outline-variant/30 text-slate-600 hover:border-primary/40'
+                      }`}
+                    >
+                      {m === 'ai_full' ? 'AI tạo tự động' : 'Tự viết'}
                     </button>
                   ))}
                 </div>
               </div>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowCreateModal(false)} className="px-6 py-3 border border-outline-variant/30 rounded-xl font-bold text-slate-600 hover:bg-slate-50 transition-all">Huỷ</button>
-              <button onClick={() => setShowCreateModal(false)} className="px-8 py-3 bg-tertiary text-white rounded-xl font-bold hover:brightness-110 transition-all shadow-lg shadow-tertiary/20 active:scale-[0.98]">
-                AI tạo storyline
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ COMPARE PANEL ═══ */}
-      {showCompare && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCompare(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <h4 className="font-headline font-bold text-2xl text-primary">So sánh các nhánh</h4>
-              <button onClick={() => setShowCompare(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <span className="material-symbols-outlined text-slate-400">close</span>
-              </button>
-            </div>
-            <div className={`grid gap-6 ${storyline.nodes.length === 1 ? "grid-cols-1" : storyline.nodes.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-              {storyline.nodes.map((n, i) => (
-                <div key={n.id} className="bg-surface-container-low p-6 rounded-2xl">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`w-3 h-3 rounded-full ${n.tagColor === "tertiary" ? "bg-tertiary" : n.tagColor === "primary" ? "bg-primary" : "bg-slate-400"}`}></span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-secondary">Nhánh {i + 1} — {n.tag}</span>
-                  </div>
-                  <p className="font-headline font-bold text-primary text-sm leading-snug mb-3">{n.text}</p>
-                  <p className="text-xs text-slate-500 italic leading-relaxed">{n.detail}</p>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-center text-slate-400 mt-6 italic">
-              Phiên bản demo — Trong thực tế AI sẽ phân tích ý nghĩa và sự khác biệt giữa các kết thúc.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ WRITE PROMPT PANEL ═══ */}
-      {showWritePrompt && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowWritePrompt(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h4 className="font-headline font-bold text-2xl text-primary">Viết bài phân tích</h4>
-                <p className="text-sm text-slate-500 mt-1">So sánh kết thúc gốc và kết thúc giả định</p>
+              {createError && (
+                <p className="text-xs text-red-500">{createError}</p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCreate(false)}
+                  className="flex-1 py-2.5 border border-outline-variant/30 rounded-xl font-semibold hover:bg-surface-container-low text-sm">
+                  Hủy
+                </button>
+                <button type="submit" disabled={creating}
+                  className="flex-1 py-2.5 bg-tertiary text-white rounded-xl font-semibold hover:brightness-110 disabled:opacity-50 text-sm">
+                  {creating ? 'Đang tạo…' : 'Tạo storyline'}
+                </button>
               </div>
-              <button onClick={() => setShowWritePrompt(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <span className="material-symbols-outlined text-slate-400">close</span>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Compare Modal */}
+      {showCompare && selected && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowCompare(false)}
+        >
+          <div
+            className="relative z-10 bg-white rounded-2xl p-8 shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-headline text-xl font-bold text-primary">So sánh các nhánh</h3>
+              <button onClick={() => setShowCompare(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <div className="bg-primary/5 p-4 rounded-xl mb-4 text-sm">
-              <p className="font-bold text-primary mb-1">Gợi ý đề bài:</p>
-              <p className="text-slate-600 italic">&quot;So sánh kết thúc nguyên tác và nhánh giả định. Phân tích ý nghĩa nhân văn và giá trị tư tưởng của mỗi hướng đi.&quot;</p>
-            </div>
-            <textarea
-              className="w-full border border-outline-variant/30 rounded-2xl p-6 font-headline text-base leading-relaxed min-h-[250px] focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none"
-              placeholder="Viết bài phân tích của em tại đây..."
-            ></textarea>
-            <div className="flex gap-3 justify-end mt-6">
-              <button onClick={() => setShowWritePrompt(false)} className="px-6 py-3 border border-outline-variant/30 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all">Huỷ</button>
-              <button onClick={() => setShowWritePrompt(false)} className="px-8 py-3 bg-primary text-white rounded-xl text-sm font-bold hover:bg-primary-container transition-all shadow-md active:scale-[0.98]">
-                <span className="material-symbols-outlined text-[16px] align-middle mr-1">send</span>
-                Gửi bài viết
-              </button>
+            <div className="space-y-4">
+              {storylines
+                .filter(s => s.workTitle === selected.workTitle)
+                .map((s, i) => (
+                  <div key={s.id} className="bg-surface-container-low rounded-xl p-5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="w-2 h-2 rounded-full bg-secondary"></span>
+                      <span className="text-xs font-bold text-secondary uppercase tracking-wider">
+                        Nhánh {i + 1} · {s.branch_point.length > 40 ? s.branch_point.slice(0, 40) + '…' : s.branch_point}
+                      </span>
+                    </div>
+                    {s.content ? (
+                      <p className="text-sm leading-relaxed text-slate-600">
+                        {s.content.slice(0, 200)}{s.content.length > 200 ? '…' : ''}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic">Chưa có nội dung.</p>
+                    )}
+                    {s.moral && (
+                      <p className="text-xs text-amber-600 italic mt-1">→ {s.moral}</p>
+                    )}
+                  </div>
+                ))}
             </div>
           </div>
         </div>
