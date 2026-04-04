@@ -9,7 +9,6 @@
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
-import { WORK_STATUS } from './_constants.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -26,8 +25,8 @@ export async function onRequestPost({ request, env, data }) {
     // ── Load work ──────────────────────────────────────────────────────
     const work = await env.DB.prepare(
       `SELECT id, title, author, content FROM works
-       WHERE id = ? AND status = ? LIMIT 1`
-    ).bind(workId, WORK_STATUS.ANALYZED).first();
+       WHERE id = ? AND analysis_status = 'done' LIMIT 1`
+    ).bind(workId).first();
 
     if (!work) return jsonError('Không tìm thấy tác phẩm.', 404);
 

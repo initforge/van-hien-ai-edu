@@ -35,12 +35,12 @@ export async function onRequestGet({ env, data, request }) {
                   c.work_id AS workId, w.title AS workTitle
            FROM characters c
            JOIN works w ON c.work_id = w.id
-           WHERE c.active = 1 AND w.status = 'analyzed'
+           WHERE c.active = 1 AND w.analysis_status = 'done'
            ORDER BY w.grade ASC, c.name ASC
            LIMIT ? OFFSET ?`
         ).bind(limit, offset).all(),
         env.DB.prepare(
-          "SELECT COUNT(*) AS total FROM characters c JOIN works w ON c.work_id = w.id WHERE c.active = 1 AND w.status = 'analyzed'"
+          "SELECT COUNT(*) AS total FROM characters c JOIN works w ON c.work_id = w.id WHERE c.active = 1 AND w.analysis_status = 'done'"
         ).first(),
       ]);
       rows = rowsResult.results || [];

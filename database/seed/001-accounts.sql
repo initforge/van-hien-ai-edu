@@ -2,11 +2,12 @@
 -- Idempotent: INSERT OR IGNORE (skips if id already exists)
 
 -- ── Users ──────────────────────────────────────────────────────────────────────
-INSERT OR IGNORE INTO users (id, name, email, role, username, created_at) VALUES
-  ('teacher-1', 'Thầy Nguyễn Văn An', 'an@vanhocai.edu.vn', 'teacher', 'an',     datetime('now')),
-  ('student-1', 'Trần Thị Mai',        'mai@vanhocai.edu.vn', 'student', 'mai',    datetime('now')),
-  ('student-2', 'Lê Hoàng Nam',        'nam@vanhocai.edu.vn', 'student', 'nam',   datetime('now')),
-  ('admin-1',  'Quản Trị Viên',        'admin@vanhocai.edu.vn', 'admin', 'admin', datetime('now'));
+-- password_plain: plaintext password for display
+INSERT OR IGNORE INTO users (id, name, email, role, username, password_plain, created_at) VALUES
+  ('teacher-1', 'Thầy Nguyễn Văn An', 'an@vanhocai.edu.vn', 'teacher', 'an',     'an123',     datetime('now')),
+  ('student-1', 'Trần Thị Mai',        'mai@vanhocai.edu.vn', 'student', 'mai',    'mai123',    datetime('now')),
+  ('student-2', 'Lê Hoàng Nam',        'nam@vanhocai.edu.vn', 'student', 'nam',   'nam123',    datetime('now')),
+  ('admin-1',  'Quản Trị Viên',        'admin@vanhocai.edu.vn', 'admin', 'admin', 'admin123', datetime('now'));
 
 -- ── Classes ────────────────────────────────────────────────────────────────────
 -- invite_code: 8-char uppercase hex generated per class

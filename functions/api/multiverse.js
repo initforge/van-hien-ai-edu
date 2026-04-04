@@ -133,7 +133,7 @@ export async function onRequestPost({ request, env, data }) {
 
     if (generationMethod === 'ai_full') {
       const { text, inputTokens, outputTokens } = await aiCall(
-        '@cf/qwen/qwen2.5-72b-instruct',
+        '@cf/qwen/qwen3-30b-a3b-fp8',
         {
           systemPrompt: `Bạn là nhà văn Việt Nam chuyên viết truyện ngắn. Viết một đoạn truyện ngắn sáng tạo dựa trên gợi ý "WHAT IF" cho tác phẩm "${work.title}" của ${work.author}. Đoạn truyện phải: (1) giữ đúng tinh thần tác phẩm gốc, (2) có kết cục mới hấp dẫn, (3) dài 200-400 từ. Trả lời JSON: {"content": "...đoạn truyện...", "moral": "...bài học rút ra..."}`,
           messages: [{ role: 'user', content: `WHAT IF: ${branchPoint}` }],
@@ -156,7 +156,7 @@ export async function onRequestPost({ request, env, data }) {
       if (!parent) return jsonError('Không tìm thấy nhánh cha.', 404);
 
       const { text, inputTokens, outputTokens } = await aiCall(
-        '@cf/qwen/qwen2.5-72b-instruct',
+        '@cf/qwen/qwen3-30b-a3b-fp8',
         {
           systemPrompt: `Bạn là nhà văn Việt Nam. Viết tiếp một đoạn truyện dựa trên nội dung đã cho, theo hướng WHAT IF mới. Giữ đúng giọng văn và phong cách. Trả lời JSON: {"content": "...tiếp theo...", "moral": "...bài học..."}`,
           messages: [{ role: 'user', content: `Nội dung trước:\n${(parent.content || '').slice(0, 1500)}\n\nWHAT IF mới: ${branchPoint}` }],

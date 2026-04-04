@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { storeToken } from "../lib/fetcher";
 
 type AuthTab = "login" | "register";
 
@@ -39,13 +40,14 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
-      const data = await res.json() as { redirect?: string; error?: string };
+      const data = await res.json() as { redirect?: string; error?: string; token?: string; user?: { role?: string } };
 
       if (!res.ok) {
         throw new Error(data.error || "Đăng nhập thất bại");
       }
 
-      if (data.redirect) {
+      if (data.redirect && data.token && data.user?.role) {
+        storeToken(data.token, data.user.role);
         await refreshUser();
         navigate(data.redirect);
       }

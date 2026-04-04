@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS works (
   grade           TEXT,
   genre           TEXT CHECK(genre IN ('tho','van_ban') OR genre IS NULL),
   content         TEXT,
-  status          TEXT DEFAULT 'pending' CHECK(status IN ('pending','analyzed')),
   teacher_id      TEXT NOT NULL REFERENCES users(id),
   file_name       TEXT,
   file_data       TEXT,

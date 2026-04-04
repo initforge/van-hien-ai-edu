@@ -4,12 +4,6 @@
  * in SQL queries and API responses where runtime string matching is needed.
  */
 
-/** Work analysis status */
-export const WORK_STATUS = /** @type {const} */ ({
-  ANALYZED: 'analyzed',
-  PENDING: 'pending',
-});
-
 /** Submission grading status */
 export const SUBMISSION_STATUS = /** @type {const} */ ({
   PENDING: 'pending',

@@ -1,42 +1,82 @@
 import { SignJWT, jwtVerify } from 'jose';
-import { revokeToken, isTokenRevoked } from './_kv.js';
-
-async function verifyPassword(inputPw, storedHash) {
-  try {
-    const [salt, targetHash] = storedHash.split(':');
-    const saltBytes = new TextEncoder().encode(salt);
-    const key = await crypto.subtle.importKey(
-      'raw', new TextEncoder().encode(inputPw),
-      { name: 'PBKDF2' }, false, ['deriveBits']
-    );
-    const derived = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-512' },
-      key, 512
-    );
-    const derivedHex = Array.from(new Uint8Array(derived))
-      .map(b => b.toString(16).padStart(2, '0')).join('');
-    return derivedHex === targetHash;
-  } catch (err) {
-    console.error('verifyPassword error:', err?.message || err);
-    return false;
-  }
-}
+import { revokeToken } from './_kv.js';
 
 export async function onRequestPost({ request, env }) {
   try {
-    const { username, password } = await request.json();
-    const identifier = username?.trim();
+    const body = await request.json();
+    const { username, password, name, inviteCode } = body;
 
+    // ── Registration ───────────────────────────────────────────────────────────
+    if (inviteCode !== undefined || name !== undefined) {
+      if (!name?.trim() || !inviteCode?.trim()) {
+        return new Response(JSON.stringify({ error: "Vui lòng nhập họ tên và mã lớp." }), {
+          status: 400, headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      // Find class by invite code
+      const cls = await env.DB.prepare(
+        "SELECT id, name FROM classes WHERE invite_code = ? COLLATE NOCASE LIMIT 1"
+      ).bind(inviteCode.trim().toUpperCase()).first();
+      if (!cls) {
+        return new Response(JSON.stringify({ error: "Mã lớp không đúng. Vui lòng kiểm tra lại." }), {
+          status: 400, headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      // Generate username from name
+      const baseUsername = name.trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z]/g, '').slice(0, 20);
+      let username = baseUsername;
+      let counter = 1;
+      while (true) {
+        const existing = await env.DB.prepare(
+          "SELECT id FROM users WHERE username = ? COLLATE NOCASE LIMIT 1"
+        ).bind(username).first();
+        if (!existing) break;
+        username = `${baseUsername}${counter++}`;
+      }
+
+      // Generate password
+      const pw = username + '123';
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+
+      await env.DB.prepare(
+        `INSERT INTO users (id, name, email, username, password_plain, role, created_at)
+         VALUES (?, ?, ?, ?, ?, 'student', ?)`
+      ).bind(id, name.trim(), `${username}@vanhocai.edu.vn`, username, pw, now).run();
+
+      await env.DB.prepare(
+        "INSERT INTO class_students (id, class_id, student_id) VALUES (?, ?, ?)"
+      ).bind(crypto.randomUUID(), cls.id, id).run();
+
+      // Log registration
+      await env.DB.prepare(
+        `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+         VALUES (?, ?, ?, 'student', 'student_registered', 'class', ?, ?, ?)`
+      ).bind(crypto.randomUUID(), id, name.trim(), cls.id, JSON.stringify({ className: cls.name }), now).run();
+
+      return new Response(JSON.stringify({
+        success: true, className: cls.name,
+        username, password: pw,
+      }), {
+        status: 201, headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // ── Login ─────────────────────────────────────────────────────────────────
+    const identifier = username?.trim();
     if (!identifier || !password) {
       return new Response(JSON.stringify({ error: "Vui lòng nhập username và mật khẩu." }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" }
+        status: 400, headers: { "Content-Type": "application/json" }
       });
     }
 
     // Validate user — check username OR email
     const user = await env.DB.prepare(
-      "SELECT id, name, role, avatar, password_hash FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE"
+      "SELECT id, name, role, avatar, password_plain FROM users WHERE username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE"
     ).bind(identifier, identifier).first();
 
     if (!user) {
@@ -47,7 +87,7 @@ export async function onRequestPost({ request, env }) {
     }
 
     // Verify password
-    if (!user.password_hash || !(await verifyPassword(password, user.password_hash))) {
+    if (!user.password_plain || user.password_plain !== password) {
       return new Response(JSON.stringify({ error: "Mật khẩu không đúng." }), {
         status: 401,
         headers: { "Content-Type": "application/json" }
@@ -85,9 +125,14 @@ export async function onRequestPost({ request, env }) {
     };
     const redirect = redirectMap[user.role] || '/';
 
-    const cookie = `token=${token}; HttpOnly; Secure; Path=/; Max-Age=86400; SameSite=Lax`;
+    const cookieName = `token_${user.role}`;
+    const cookie = `${cookieName}=${token}; HttpOnly; Path=/; Max-Age=86400; SameSite=Lax`;
 
-    return new Response(JSON.stringify({ redirect, success: true, user: { id: user.id, name: user.name, role: user.role } }), {
+    return new Response(JSON.stringify({
+      redirect, success: true,
+      token, // sent in JSON so frontend can store in localStorage
+      user: { id: user.id, name: user.name, role: user.role }
+    }), {
       headers: {
         "Content-Type": "application/json",
         "Set-Cookie": cookie
@@ -103,26 +148,28 @@ export async function onRequestPost({ request, env }) {
 
 // DELETE /api/auth — logout (revoke token)
 export async function onRequestDelete({ request, env }) {
-  // Extract and revoke the current token
-  const cookieHeader = request.headers.get('Cookie') || '';
-  const tokenMatch = cookieHeader.match(/token=([^;]+)/);
-  if (tokenMatch && env.VANHIEN_KV) {
-    try {
-      // Verify to get jti, then revoke
-      const { payload } = await jwtVerify(tokenMatch[1], new TextEncoder().encode(env.JWT_SECRET));
-      if (payload.jti) {
-        await revokeToken(env.VANHIEN_KV, payload.jti, 86400);
-      }
-    } catch {
-      // Invalid token already — nothing to revoke
-    }
+  // Try Authorization header first, then cookie
+  let token = request.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) {
+    const cookieHeader = request.headers.get('Cookie') || '';
+    const cookieMatch = cookieHeader.match(/token_[^=]+=([^;]+)/);
+    if (cookieMatch) token = cookieMatch[1];
   }
 
-  const cookie = `token=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax`;
+  if (token && env.VANHIEN_KV) {
+    try {
+      const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
+      if (payload.jti) await revokeToken(env.VANHIEN_KV, payload.jti, 86400);
+    } catch { /* ignore */ }
+  }
+
+  const clearCookies = ['admin', 'teacher', 'student'].map(role =>
+    `token_${role}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`
+  ).join(', ');
   return new Response(JSON.stringify({ success: true }), {
     headers: {
       "Content-Type": "application/json",
-      "Set-Cookie": cookie
+      "Set-Cookie": clearCookies
     }
   });
 }

@@ -6,7 +6,7 @@ import MultiversePreviewContent from '../../components/ai/MultiversePreviewConte
 import { fetcher } from '../../lib/fetcher';
 
 export default function TeacherMultiversePage() {
-  const { data: storylinesData, mutate, isLoading } = useSWR('/api/storylines', fetcher);
+  const { data: storylinesData, mutate, isLoading } = useSWR('/api/teacher/storylines', fetcher);
   const { data: charactersData } = useSWR('/api/characters', fetcher);
   const storylines = storylinesData?.data ?? [];
   const characters = charactersData?.data ?? [];
@@ -73,26 +73,42 @@ export default function TeacherMultiversePage() {
   const handleApprove = async () => {
     if (!previewData) return;
     setModalLoading(true);
+    const approved = { ...previewData, ...editableContent };
+
+    // Optimistic: add to list instantly
+    await mutate(
+      '/api/teacher/storylines',
+      (current: { data: typeof storylines } | undefined) => ({
+        ...current,
+        data: [
+          ...(current?.data ?? []),
+          {
+            id: approved.previewId,
+            workId: formData.workId,
+            workTitle: works.find(w => w.id === formData.workId)?.title || '',
+            branchPoint: formData.branchPoint,
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      }),
+      false
+    );
+    setShowPreview(false);
+    setPreviewData(null);
+    setFormData({ workId: works[0]?.id || '', branchPoint: '' });
+
     try {
-      const res = await fetch('/api/ai/multiverse-approve', {
+      await fetch('/api/ai/multiverse-approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          previewId: previewData.previewId,
+          previewId: approved.previewId,
           ...editableContent,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        await mutate();
-        setShowPreview(false);
-        setPreviewData(null);
-        setFormData({ workId: works[0]?.id || '', branchPoint: '' });
-      } else {
-        alert(data.error || 'Lỗi khi lưu.');
-      }
     } catch {
-      alert('Lỗi khi lưu.');
+      // Rollback
+      await mutate('/api/teacher/storylines');
     } finally {
       setModalLoading(false);
     }

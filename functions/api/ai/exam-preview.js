@@ -8,6 +8,7 @@
 import { aiCall } from '../_ai.js';
 import { kvSet } from '../_kv.js';
 import { jsonError, parseAiJson } from '../_utils.js';
+import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'exam-preview:';
 
@@ -19,7 +20,7 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const body = await request.json();
-    const { title, type = 'exercise', duration = 45, workId, classId } = body;
+    const { title, type = 'exercise', duration = 45, workId, classId, deadline } = body;
 
     if (!title?.trim()) {
       return jsonError('Thiếu tiêu đề đề thi.', 400);
@@ -51,8 +52,8 @@ export async function onRequestPost({ request, env, data }) {
       `Yêu cầu: câu 1-2 phần đọc hiểu, câu 3-5 phần nghị luận.\n` +
       `Đề thi thuộc tác phẩm văn học Việt Nam.`;
 
-    const { text: aiResponse } = await aiCall(
-      '@cf/qwen/qwen2.5-coder-32b-instruct',
+    const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
+      '@cf/mistralai/mistral-small-3.1-24b-instruct',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
     );
 
@@ -71,10 +72,14 @@ export async function onRequestPost({ request, env, data }) {
       workId: workId || null,
       classId: classId || null,
       duration,
+      deadline: deadline || null,
       questions,
       teacherId: user.id,
       createdAt: new Date().toISOString(),
     }, 1800);
+
+    await logTokenUsage(env, user.id, 'exam_gen',
+      `Tạo đề: ${title.trim()}`, inputTokens, outputTokens);
 
     return new Response(JSON.stringify({
       previewId,

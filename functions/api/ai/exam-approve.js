@@ -46,7 +46,7 @@ export async function onRequestPost({ request, env, data }) {
 
     await env.DB.prepare(
       `INSERT INTO exams (id, title, type, work_id, class_id, teacher_id, duration, status, deadline, ai_generated, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', NULL, 1, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?)`
     ).bind(
       examId,
       finalTitle,
@@ -55,6 +55,7 @@ export async function onRequestPost({ request, env, data }) {
       preview.classId,
       user.id,
       preview.duration,
+      preview.deadline || null,
       now
     ).run();
 

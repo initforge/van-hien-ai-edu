@@ -3,6 +3,7 @@ import useSWR from 'swr';
 import { fetcher } from '../../lib/fetcher';
 import type { TeacherStats } from '../../types/api';
 import ActivityPopup from '../../components/activity/ActivityPopup';
+import WarningsPopup from '../../components/warnings/WarningsPopup';
 
 export default function TeacherDashboardPage() {
   const { data } = useSWR<TeacherStats>('/api/stats', fetcher);
@@ -12,6 +13,7 @@ export default function TeacherDashboardPage() {
   };
 
   const [showActivity, setShowActivity] = React.useState(false);
+  const [showWarnings, setShowWarnings] = React.useState(false);
 
   return (
     <>
@@ -62,44 +64,45 @@ export default function TeacherDashboardPage() {
           </div>
           <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">quiz</span>
         </div>
-
-        {/* Card 4: Cảnh báo AI */}
-        <div className="bg-white/80 backdrop-blur-md border border-[#326286]/20 p-6 rounded-2xl relative overflow-hidden group hover:bg-white/90 transition-all duration-500 hover:shadow-lg hover:-translate-y-1" style={{ animation: "fadeIn 0.5s ease-out 0.4s both" }}>
-          <div className="relative z-10">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-[10px] font-bold text-secondary uppercase tracking-[0.2em]">Cảnh báo AI</span>
-              <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${(stats.warningCount ?? 0) > 0 ? 'bg-red-50 text-red-500' : 'bg-green-100 text-green-700'}`}>
-                {(stats.warningCount ?? 0) > 0 ? `${stats.warningCount} CẢNH BÁO` : 'TỐT'}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-headline font-bold text-primary">{stats.warningCount ?? 0}</span>
-              <span className="text-outline text-sm">vấn đề</span>
-            </div>
-          </div>
-          <span className="material-symbols-outlined absolute -right-4 -bottom-4 text-8xl text-primary/5 group-hover:text-primary/10 transition-colors">gpp_maybe</span>
-        </div>
       </div>
 
       {/* Class Drill-down */}
       <ClassDrillDown />
 
-      {/* ROW 2: Activity */}
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-headline font-bold text-primary">Hoạt động gần đây</h3>
-          <button
-            onClick={() => setShowActivity(true)}
-            className="text-xs font-bold text-secondary hover:underline tracking-widest uppercase"
-          >
-            Xem tất cả
-          </button>
+      {/* ROW 2: Activity + Warnings (2 columns) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Hoạt động gần đây */}
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-headline font-bold text-primary">Hoạt động gần đây</h3>
+            <button
+              onClick={() => setShowActivity(true)}
+              className="text-xs font-bold text-secondary hover:underline tracking-widest uppercase"
+            >
+              Xem tất cả
+            </button>
+          </div>
+          <ActivityFeedMini />
         </div>
-        <ActivityFeedMini />
+
+        {/* Right: Cảnh báo AI */}
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-headline font-bold text-primary">Cảnh báo AI</h3>
+            <button
+              onClick={() => setShowWarnings(true)}
+              className="text-xs font-bold text-tertiary hover:underline tracking-widest uppercase"
+            >
+              Xem tất cả
+            </button>
+          </div>
+          <WarningsFeedMini onViewAll={() => setShowWarnings(true)} />
+        </div>
       </div>
 
-      {/* Popup */}
+      {/* Popups */}
       <ActivityPopup open={showActivity} onClose={() => setShowActivity(false)} />
+      <WarningsPopup open={showWarnings} onClose={() => setShowWarnings(false)} />
     </>
   );
 }
@@ -191,6 +194,34 @@ function ClassStudentList({ classId, className }: { classId: string; className: 
 
 // ─── Mini components (embedded, no extra files) ────────────────────────────────
 
+// ─── Warnings Feed Mini ───────────────────────────────────────────────────────────
+
+interface MiniWarning {
+  id: string;
+  type: string;
+  severity: string;
+  studentName?: string;
+  className?: string;
+  message: string;
+  createdAt?: string;
+}
+
+const MINI_WARNING_META: Record<string, { icon: string; color: string; label: string; desc: string }> = {
+  W1: { icon: 'bolt',          color: 'text-amber-600', label: 'Nộp nhanh',   desc: 'Tốc độ làm bài quá nhanh so với số từ' },
+  W2: { icon: 'short_text',    color: 'text-amber-600', label: 'Bài ngắn',     desc: 'Số từ bài viết dưới 100 từ' },
+  W3: { icon: 'repeat',        color: 'text-tertiary',   label: 'Từ lặp',       desc: 'Từ ngữ lặp lại nhiều lần trong bài' },
+  W4: { icon: 'trending_down', color: 'text-red-600',   label: 'Điểm giảm',   desc: 'Điểm thấp hơn đáng kể so với 5 bài gần nhất' },
+  W5: { icon: 'trending_up',  color: 'text-green-600', label: 'Điểm tăng',  desc: 'Điểm cao bất thường so với lịch sử' },
+  W6: { icon: 'content_copy',  color: 'text-tertiary',   label: 'Trùng lặp',   desc: 'Nội dung trùng lặp với bạn cùng lớp' },
+  W7: { icon: 'schedule',      color: 'text-amber-600', label: 'Hết hạn',     desc: 'Bài nộp gần đến hạn hoặc đã quá hạn' },
+};
+
+const SEV_COLOR: Record<string, string> = {
+  high: 'text-red-500',
+  medium: 'text-amber-600',
+  low: 'text-secondary',
+};
+
 function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -277,3 +308,104 @@ function ActivityFeedMini() {
   );
 }
 
+// ─── Warnings Feed Mini ───────────────────────────────────────────────────────────
+
+function WarningsFeedMini({ onViewAll }: { onViewAll: () => void }) {
+  const { data, isLoading } = useSWR<{
+    warnings: MiniWarning[];
+    counts: Record<string, number>;
+  }>('/api/warnings', fetcher, { revalidateOnFocus: false });
+
+  if (isLoading) {
+    return (
+      <div className="bg-white/80 backdrop-blur-md border border-[#326286]/15 rounded-2xl divide-y divide-outline-variant/10 overflow-hidden">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="flex items-center gap-3 p-4 animate-pulse">
+            <div className="w-9 h-9 rounded-lg bg-[#326286]/5 shrink-0" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3.5 bg-[#326286]/5 rounded w-3/4" />
+              <div className="h-3 bg-[#326286]/5 rounded w-1/2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const warnings = data?.warnings ?? [];
+  const top = warnings.slice(0, 5);
+  const counts = data?.counts ?? {};
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) as number;
+
+  if (warnings.length === 0) {
+    return (
+      <div className="bg-white/80 backdrop-blur-md border border-[#326286]/15 rounded-2xl p-8 text-center">
+        <span className="material-symbols-outlined text-4xl text-secondary mb-2 block" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+        <p className="text-sm font-semibold text-secondary">Không có cảnh báo nào</p>
+        <p className="text-xs text-outline mt-1">Hệ thống AI hoạt động bình thường.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white/80 backdrop-blur-md border border-[#326286]/15 rounded-2xl overflow-hidden">
+      {/* Summary bar */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-tertiary/5 border-b border-[#326286]/10">
+        <span className="text-[10px] font-bold text-tertiary uppercase tracking-widest">Tổng: {total} cảnh báo</span>
+        <div className="flex gap-2 ml-auto flex-wrap">
+          {(['W1', 'W2', 'W3', 'W4', 'W5', 'W6'] as const).map(w => counts[w] > 0 && (
+            <span key={w} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-tertiary/10 text-tertiary" title={MINI_WARNING_META[w]?.desc}>
+              {MINI_WARNING_META[w]?.label} {counts[w]}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Warning list */}
+      <div className="divide-y divide-outline-variant/10">
+        {top.map((w: MiniWarning) => {
+          const meta = MINI_WARNING_META[w.type] || { icon: 'warning', color: 'text-amber-600', label: w.type, desc: '' };
+          return (
+            <div key={w.id} className="flex items-start gap-3 p-3 hover:bg-[#326286]/4 transition-colors">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${w.severity === 'high' ? 'bg-red-50' : 'bg-amber-50'}`}>
+                <span className={`material-symbols-outlined text-sm ${meta.color}`} style={{ fontVariationSettings: "'FILL' 1" }}>
+                  {meta.icon}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black font-mono px-1 py-0.5 rounded bg-tertiary/10 text-tertiary">{w.type}</span>
+                  <span className={`text-[10px] font-bold uppercase ${SEV_COLOR[w.severity] || SEV_COLOR.medium}`}>
+                    {meta.label}
+                  </span>
+                  {w.studentName && (
+                    <>
+                      <span className="text-[10px] text-outline">·</span>
+                      <span className="text-[10px] font-semibold text-on-surface truncate">{w.studentName}</span>
+                    </>
+                  )}
+                  {w.className && (
+                    <span className="text-[10px] text-outline">({w.className})</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-tertiary mt-0.5 italic">{meta.desc}</p>
+                <p className="text-xs text-outline leading-snug line-clamp-1 mt-0.5">{w.message}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* View all */}
+      {warnings.length > 5 && (
+        <button
+          onClick={onViewAll}
+          className="w-full px-4 py-3 text-xs font-bold text-tertiary hover:bg-tertiary/5 border-t border-[#326286]/10 transition-colors flex items-center justify-center gap-1"
+        >
+          Xem thêm {warnings.length - 5} cảnh báo
+          <span className="material-symbols-outlined text-sm">arrow_forward</span>
+        </button>
+      )}
+    </div>
+  );
+}

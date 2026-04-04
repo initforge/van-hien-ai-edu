@@ -62,6 +62,13 @@ export async function onRequestPost({ request, env, data }) {
        VALUES (?, ?, ?, ?, ?, ?)`
     ).bind(id, name.trim(), user.id, gradeLevel ? parseInt(gradeLevel) : null, inviteCode, now).run();
 
+    // Log: teacher created class
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, 'class_created', 'class', id,
+           JSON.stringify({ name: name.trim(), gradeLevel }), now).run();
+
     return new Response(JSON.stringify({ id, name: name.trim(), gradeLevel, inviteCode, createdAt: now }), {
       status: 201, headers: { 'Content-Type': 'application/json' },
     });

@@ -8,7 +8,7 @@
 import { aiCall } from '../_ai.js';
 import { kvSet } from '../_kv.js';
 import { jsonError, parseAiJson } from '../_utils.js';
-import { WORK_STATUS } from '../_constants.js';
+import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'multiverse-preview:';
 
@@ -27,8 +27,8 @@ export async function onRequestPost({ request, env, data }) {
     // Load work
     const work = await env.DB.prepare(
       `SELECT id, title, author, content FROM works
-       WHERE id = ? AND status = ? LIMIT 1`
-    ).bind(workId, WORK_STATUS.ANALYZED).first();
+       WHERE id = ? AND analysis_status = 'done' LIMIT 1`
+    ).bind(workId).first();
 
     if (!work) return jsonError('Không tìm thấy tác phẩm.', 404);
 
@@ -51,10 +51,14 @@ export async function onRequestPost({ request, env, data }) {
       `Điểm rẽ nhánh: "${branchPoint}"\n\n` +
       `Hãy viết một câu chuyện thay thế cho tác phẩm "${work.title}" bắt đầu từ điểm rẽ nhánh trên.`;
 
-    const { text: aiResponse } = await aiCall(
+    const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
       '@cf/qwen/qwq-32b',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.85 }
     );
+
+    await logTokenUsage(env, user.id, 'multiverse',
+      `Đa vũ trụ preview: ${work.title} — ${branchPoint.slice(0, 30)}`,
+      inputTokens, outputTokens);
 
     const { parsed } = parseAiJson(aiResponse, null);
     const storyline = {

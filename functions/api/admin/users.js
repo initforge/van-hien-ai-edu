@@ -120,8 +120,7 @@ export async function onRequestPatch({ env, data, request }) {
       return new Response(JSON.stringify({ error: 'User not found' }), { status: 404 });
     }
 
-    const hash = await hashPassword(password);
-    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(hash, id).run();
+    await env.DB.prepare("UPDATE users SET password_plain = ? WHERE id = ?").bind(password, id).run();
 
     await logActivity(env, data.user, 'reset_password', 'user', id, `Reset password for user: ${id}`);
 
@@ -131,23 +130,6 @@ export async function onRequestPatch({ env, data, request }) {
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to reset password' }), { status: 500 });
   }
-}
-
-// Inline hashPassword (same logic as auth.js)
-async function hashPassword(password) {
-  const salt = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-  const saltBytes = new TextEncoder().encode(salt);
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(password),
-    { name: 'PBKDF2' }, false, ['deriveBits']
-  );
-  const derived = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-512' },
-    key, 512
-  );
-  const derivedHex = Array.from(new Uint8Array(derived))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-  return `${salt}:${derivedHex}`;
 }
 
 export async function onRequestDelete({ env, data, request }) {

@@ -4,10 +4,6 @@ import { isTokenRevoked } from './_kv.js';
 // JWT_SECRET must be set via: wrangler secret put JWT_SECRET
 // Never hardcode secrets in production
 
-// Password hashing constants (match database/seed/008-passwords.sql)
-export const HASH_ROUNDS = 100000;
-export const HASH_KEY_LEN = 64;
-
 // Middleware that runs before /api/* handlers
 export async function onRequest(context) {
   const { request, next, data, env } = context;
@@ -19,15 +15,18 @@ export async function onRequest(context) {
   }
 
   try {
-    // Read Token from Cookies
-    const cookieHeader = request.headers.get('Cookie');
-    let token = null;
+    // Read Token: Authorization header first (localStorage approach), then cookies (legacy)
+    let token = request.headers.get('Authorization')?.replace('Bearer ', '');
 
-    if (cookieHeader) {
+    if (!token) {
+      const cookieHeader = request.headers.get('Cookie') || '';
       const cookies = cookieHeader.split(';').map(c => c.trim());
-      const tokenCookie = cookies.find(c => c.startsWith('token='));
-      if (tokenCookie) {
-        token = tokenCookie.split('=')[1];
+      for (const role of ['admin', 'teacher', 'student']) {
+        const roleCookie = cookies.find(c => c.startsWith(`token_${role}=`));
+        if (roleCookie) {
+          token = roleCookie.split('=').slice(1).join('=');
+          break;
+        }
       }
     }
 

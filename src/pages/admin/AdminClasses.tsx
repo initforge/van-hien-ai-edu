@@ -31,7 +31,7 @@ export default function AdminClassesPage() {
   // Card expand
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { data: expandedData, mutate: mutateExpanded } = useSWR<ClassExpandedData>(
-    expandedId ? `/api/admin/classes/students?classId=${expandedId}` : null,
+    expandedId ? `/api/admin/classes?classId=${expandedId}` : null,
     fetcher
   );
 
@@ -56,7 +56,7 @@ export default function AdminClassesPage() {
 
   const buildUrl = () => {
     const params = new URLSearchParams();
-    if (filterGrade !== null) params.set('grade', String(filterGrade));
+    if (filterGrade !== null) params.set('gradeLevel', String(filterGrade));
     if (filterTeacher) params.set('teacherId', filterTeacher);
     return `/api/admin/classes${params.toString() ? `?${params}` : ''}`;
   };
@@ -290,24 +290,29 @@ export default function AdminClassesPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-headline font-bold text-primary mb-6">
-              {editClass ? 'Sửa Lớp học' : 'Thêm Lớp học'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-surface-container-lowest rounded-2xl w-full max-w-md shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {editClass ? 'edit' : 'school'}
+              </span>
+              <h3 className="text-xl font-headline font-bold text-primary">
+                {editClass ? 'Sửa Lớp học' : 'Thêm Lớp học'}
+              </h3>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4 px-6 pb-6 mt-2">
               {submitError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">{submitError}</div>
+                <div className="p-3 bg-error-container border border-error/20 rounded-xl text-error text-sm">{submitError}</div>
               )}
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Tên lớp</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all"
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest"
                   placeholder="Ví dụ: Lớp 6A1" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Khối</label>
                 <select value={form.grade} onChange={e => setForm(f => ({ ...f, grade: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all bg-white">
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest cursor-pointer">
                   <option value="">— Chọn khối —</option>
                   <option value="6">Khối 6</option>
                   <option value="7">Khối 7</option>
@@ -318,7 +323,7 @@ export default function AdminClassesPage() {
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Giáo viên</label>
                 <select value={form.teacherId} onChange={e => setForm(f => ({ ...f, teacherId: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all bg-white">
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest cursor-pointer">
                   <option value="">— Chọn giáo viên —</option>
                   {teacherList.map(t => (
                     <option key={t.id} value={t.id}>{t.name}</option>
@@ -327,11 +332,11 @@ export default function AdminClassesPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
+                  className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
                   Hủy
                 </button>
                 <button type="submit" disabled={saving}
-                  className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
+                  className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
                   {saving ? 'Đang lưu...' : 'Lưu'}
                 </button>
               </div>
@@ -343,18 +348,22 @@ export default function AdminClassesPage() {
       {/* Delete Confirm */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl">
-            <h3 className="text-xl font-headline font-bold text-red-500 mb-2">Xác nhận xóa</h3>
-            <p className="text-sm text-slate-600 mb-6">
-              Bạn có chắc muốn xóa lớp học này? Học sinh và bài thi trong lớp cũng sẽ bị xóa. Hành động không thể hoàn tác.
-            </p>
-            <div className="flex gap-3">
+          <div className="bg-surface-container-lowest rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+              <span className="material-symbols-outlined text-error text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+              <div>
+                <h3 className="text-xl font-headline font-bold text-error">Xác nhận xóa</h3>
+                <p className="text-sm text-outline">Hành động không thể hoàn tác.</p>
+              </div>
+            </div>
+            <p className="text-sm text-on-surface px-6 pb-2 mt-1">Bạn có chắc muốn xóa lớp học này? Học sinh và bài thi trong lớp cũng sẽ bị xóa.</p>
+            <div className="flex gap-3 px-6 pb-6 mt-4">
               <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
+                className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
                 Hủy
               </button>
               <button onClick={handleDeleteConfirm} disabled={deleting}
-                className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors disabled:opacity-50">
+                className="flex-1 bg-error text-on-error py-2.5 rounded-xl font-semibold hover:bg-error/90 transition-colors disabled:opacity-50">
                 {deleting ? 'Đang xóa...' : 'Xóa'}
               </button>
             </div>
@@ -382,6 +391,7 @@ interface ClassExpandedData {
     name: string;
     email: string;
     username: string | null;
+    password_plain: string | null;
     enrollmentId: string;
     lastSubmitted: string | null;
   }[];
@@ -472,6 +482,7 @@ function ClassDetailPanel({ data, onRefresh, classId }: {
               <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">#</th>
               <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Họ tên</th>
               <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Username</th>
+              <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Mật khẩu</th>
               <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Email</th>
               <th className="text-left p-4 text-[10px] font-bold text-outline uppercase tracking-widest">Nộp bài gần nhất</th>
             </tr>
@@ -483,20 +494,28 @@ function ClassDetailPanel({ data, onRefresh, classId }: {
                   <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-4" /></td>
                   <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-32" /></td>
                   <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-20" /></td>
+                  <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-16" /></td>
                   <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-40" /></td>
                   <td className="p-4"><div className="h-4 bg-[#326286]/5 rounded animate-pulse w-24" /></td>
                 </tr>
               ))
             ) : students.length === 0 ? (
               <tr>
-                <td colSpan={5} className="p-12 text-center text-outline">Lớp chưa có học sinh nào</td>
+                <td colSpan={6} className="p-12 text-center text-outline">Lớp chưa có học sinh nào</td>
               </tr>
             ) : students.map((s, i) => (
               <tr key={s.id} className="border-b border-[#326286]/5 hover:bg-[#326286]/4 transition-colors">
                 <td className="p-4 text-outline font-mono text-xs">{i + 1}</td>
                 <td className="p-4 font-semibold text-on-surface">{s.name}</td>
-                <td className="p-4 font-mono text-xs text-outline">{s.username || '—'}</td>
-                <td className="p-4 text-outline">{s.email}</td>
+                <td className="p-4 font-mono text-xs text-secondary">{s.username || '—'}</td>
+                <td className="p-4">
+                  {s.password_plain ? (
+                    <span className="font-mono text-xs bg-[#C9A84C]/10 text-[#C9A84C] px-2 py-1 rounded-lg font-bold">{s.password_plain}</span>
+                  ) : (
+                    <span className="text-outline/40 text-xs italic">—</span>
+                  )}
+                </td>
+                <td className="p-4 text-outline text-sm">{s.email}</td>
                 <td className="p-4 text-outline text-xs">
                   {s.lastSubmitted ? new Date(s.lastSubmitted).toLocaleDateString('vi-VN') : '—'}
                 </td>

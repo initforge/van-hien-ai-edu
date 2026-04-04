@@ -11,21 +11,22 @@ export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [filterClass, setFilterClass] = useState('');
-  const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Exam | null>(null);
-  const { data: apiExamsData, isLoading, mutate } = useSWR('/api/exams', fetcher);
+  const [publishTarget, setPublishTarget] = useState<Exam | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const { data: apiExamsData, isLoading, mutate } = useSWR(
+    `/api/exams${filterClass ? `?classId=${filterClass}` : ''}`,
+    fetcher
+  );
   const { data: worksData } = useSWR('/api/works', fetcher);
   const { data: classesData } = useSWR('/api/classes', fetcher);
   const apiExams = apiExamsData?.data ?? [];
   const works = worksData?.data ?? [];
   const classes = classesData?.data ?? [];
 
-  // Filter by tab + class
-  const filtered = apiExams.filter((e: Exam) => {
-    const matchTab = e.type === activeTab;
-    const matchClass = !filterClass || e.classId === filterClass;
-    return matchTab && matchClass;
-  });
+  // Filter by tab (class filter is now handled server-side via API)
+  const filtered = apiExams.filter((e: Exam) => e.type === activeTab);
 
   // ── AI Preview state ──────────────────────────────────────────────────────
   const [showPreview, setShowPreview] = useState(false);
@@ -46,32 +47,82 @@ export default function ExamBankPage() {
     setTimeout(() => setToastMsg(''), 4000);
   };
 
-  // Publish / unpublish
-  const handlePublish = async (exam: Exam) => {
+  // Publish / unpublish — show confirm dialog first
+  const handlePublishClick = (exam: Exam) => {
+    setPublishTarget(exam);
+  };
+
+  const handlePublishConfirm = async () => {
+    if (!publishTarget) return;
+    setPublishingId(publishTarget.id);
+    const isPublishing = publishTarget.status !== 'published';
+    const newStatus = isPublishing ? 'published' : 'draft';
+    const prevStatus = publishTarget.status;
+
+    // Optimistic update — instant UI
+    await mutate(
+      `/api/exams${filterClass ? `?classId=${filterClass}` : ''}`,
+      (current: { data: Exam[] } | undefined) => ({
+        ...current,
+        data: (current?.data ?? []).map(e =>
+          e.id === publishTarget.id ? { ...e, status: newStatus } : e
+        ),
+      }),
+      false
+    );
+    setPublishTarget(null);
+
     try {
       await fetch('/api/exams', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: exam.id, status: exam.status === 'published' ? 'draft' : 'published' }),
+        body: JSON.stringify({ id: publishTarget.id, status: newStatus }),
       });
-      await mutate();
-      showToast(exam.status === 'published' ? 'Đã gỡ đăng.' : 'Đã đăng đề.', 'success');
+      showToast(isPublishing ? 'Đã đăng đề.' : 'Đã gỡ đăng.', 'success');
     } catch {
+      // Rollback on failure
+      await mutate(
+        `/api/exams${filterClass ? `?classId=${filterClass}` : ''}`,
+        (current: { data: Exam[] } | undefined) => ({
+          ...current,
+          data: (current?.data ?? []).map(e =>
+            e.id === publishTarget.id ? { ...e, status: prevStatus } : e
+          ),
+        }),
+        false
+      );
       showToast('Lỗi khi cập nhật trạng thái.', 'error');
+    } finally {
+      setPublishingId(null);
     }
   };
 
   // Delete
   const handleDelete = async () => {
     if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
+    const deletedId = deleteTarget.id;
+
+    // Optimistic update — instant UI
+    await mutate(
+      `/api/exams${filterClass ? `?classId=${filterClass}` : ''}`,
+      (current: { data: Exam[] } | undefined) => ({
+        ...current,
+        data: (current?.data ?? []).filter(e => e.id !== deletedId),
+      }),
+      false
+    );
+    setDeleteTarget(null);
+
     try {
-      await fetch(`/api/exams?id=${deleteTarget.id}`, { method: 'DELETE' });
-      await mutate();
+      await fetch(`/api/exams?id=${deletedId}`, { method: 'DELETE' });
       showToast('Đã xóa đề.', 'success');
     } catch {
+      // Rollback on failure
+      await mutate(`/api/exams${filterClass ? `?classId=${filterClass}` : ''}`);
       showToast('Lỗi khi xóa.', 'error');
     } finally {
-      setDeleteTarget(null);
+      setDeletingId(null);
     }
   };
 
@@ -79,13 +130,13 @@ export default function ExamBankPage() {
   const className = (id: string) => classes.find((c: { id: string; name: string }) => c.id === id)?.name || '—';
   const workTitle = (id: string) => works.find((w: { id: string; title: string }) => w.id === id)?.title || '';
 
-  // Form state for AI generation
+  // Form state for AI generation — type is always the activeTab
   const [genForm, setGenForm] = useState({
     title: '',
     work: '',
     cls: '',
-    type: 'exercise' as Tab,
     duration: 45,
+    deadline: '',
   });
 
   const handleAiGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -101,8 +152,9 @@ export default function ExamBankPage() {
           title: genForm.title,
           workId: genForm.work || undefined,
           classId: genForm.cls || undefined,
-          type: genForm.type,
+          type: activeTab,
           duration: genForm.duration,
+          deadline: genForm.deadline || undefined,
         }),
       });
       const data = await res.json();
@@ -207,7 +259,9 @@ export default function ExamBankPage() {
       {/* AI Generate Form */}
       {showCreateForm && (
         <div className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
-          <h3 className="font-headline text-xl font-bold text-primary mb-6">Tạo đề {activeTab === "exam" ? "thi" : "bài tập"} mới</h3>
+          <h3 className="font-headline text-xl font-bold text-primary mb-6">
+            Tạo bài tập / đề thi mới
+          </h3>
           <form className="grid grid-cols-2 gap-6" onSubmit={handleAiGenerate}>
             <div className="space-y-2">
               <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên đề *</label>
@@ -235,48 +289,43 @@ export default function ExamBankPage() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Lớp</label>
+              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Lớp giao bài</label>
               <select
                 name="cls"
                 value={genForm.cls}
                 onChange={e => setGenForm({ ...genForm, cls: e.target.value })}
                 className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
               >
-                <option value="">— Không chọn —</option>
+                <option value="">— Để sau —</option>
                 {classes.map((c: { id: string; name: string }) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
             <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Loại đề</label>
+              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Thời lượng</label>
               <select
-                name="genre"
-                value={genForm.type}
-                onChange={e => setGenForm({ ...genForm, type: e.target.value as Tab })}
+                name="duration"
+                value={genForm.duration}
+                onChange={e => setGenForm({ ...genForm, duration: Number(e.target.value) })}
                 className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
               >
-                <option value="exercise">Bài tập</option>
-                <option value="exam">Bài thi</option>
+                <option value="15">15 phút</option>
+                <option value="45">45 phút</option>
+                <option value="90">90 phút</option>
+                <option value="120">120 phút</option>
               </select>
             </div>
-            {activeTab === "exam" && (
-              <div className="space-y-2">
-                <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Thời lượng</label>
-                <select
-                  name="duration"
-                  value={genForm.duration}
-                  onChange={e => setGenForm({ ...genForm, duration: Number(e.target.value) })}
-                  className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="15">15 phút</option>
-                  <option value="45">45 phút</option>
-                  <option value="90">90 phút</option>
-                  <option value="120">120 phút</option>
-                </select>
-              </div>
-            )}
-            <div className={`${activeTab === "exam" ? "" : "col-span-2"} flex justify-end gap-4 items-end`}>
+            <div className="space-y-2">
+              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Hạn nộp (tùy chọn)</label>
+              <input
+                type="datetime-local"
+                value={genForm.deadline}
+                onChange={e => setGenForm({ ...genForm, deadline: e.target.value })}
+                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <div className="col-span-2 flex justify-end gap-4 items-end">
               <button type="button" onClick={() => setShowCreateForm(false)} className="px-6 py-3 text-slate-500 font-bold hover:text-primary">Hủy</button>
               <button
                 type="submit"
@@ -284,7 +333,7 @@ export default function ExamBankPage() {
                 className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-sm">{aiLoading ? 'hourglass_empty' : 'auto_awesome'}</span>
-                {aiLoading ? 'Đang tạo xem trước...' : 'Tạo đề bằng AI'}
+                {aiLoading ? 'Đang tạo xem trước...' : 'Tạo bằng AI'}
               </button>
             </div>
           </form>
@@ -361,11 +410,9 @@ export default function ExamBankPage() {
                         <span className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${
                           e.status === 'published'
                             ? 'bg-blue-50 text-blue-700'
-                            : e.status === 'ai_preview'
-                            ? 'bg-purple-50 text-purple-700'
                             : 'bg-amber-50 text-amber-700'
                         }`}>
-                          {e.status === 'published' ? 'Đã đăng' : e.status === 'ai_preview' ? 'Chờ duyệt' : 'Nháp'}
+                          {e.status === 'published' ? 'Đã đăng' : 'Nháp'}
                         </span>
                       </td>
                       <td className="px-6 py-5 text-right">
@@ -376,20 +423,22 @@ export default function ExamBankPage() {
                             Xem
                           </button>
                           <button
-                            onClick={() => handlePublish(e)}
-                            className={`px-3 py-1.5 rounded-lg transition-colors ${
+                            onClick={() => handlePublishClick(e)}
+                            disabled={publishingId === e.id}
+                            className={`px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
                               e.status === 'published'
                                 ? 'text-slate-400 hover:bg-slate-100'
                                 : 'text-blue-600 hover:bg-blue-50'
                             }`}
                           >
-                            {e.status === 'published' ? 'Gỡ đăng' : 'Đăng'}
+                            {publishingId === e.id ? '...' : e.status === 'published' ? 'Gỡ đăng' : 'Đăng'}
                           </button>
                           <button
                             onClick={() => setDeleteTarget(e)}
-                            className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            disabled={deletingId === e.id}
+                            className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                           >
-                            Xóa
+                            {deletingId === e.id ? '...' : 'Xóa'}
                           </button>
                         </div>
                       </td>
@@ -404,23 +453,72 @@ export default function ExamBankPage() {
           {deleteTarget && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
               onClick={() => setDeleteTarget(null)}>
-              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto"
+              <div className="bg-surface-container-lowest rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
                 onClick={e => e.stopPropagation()}>
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="material-symbols-outlined text-red-500 text-3xl">warning</span>
-                  <h3 className="text-xl font-headline font-bold text-primary">Xác nhận xóa</h3>
+                <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+                  <span className="material-symbols-outlined text-error text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+                  <div>
+                    <h3 className="text-xl font-headline font-bold text-error">Xác nhận xóa</h3>
+                    <p className="text-sm text-outline">Hành động không thể hoàn tác.</p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-600 mb-6">
-                  Xóa đề <strong>"{deleteTarget.title}"</strong>? Hành động này không thể hoàn tác.
+                <p className="text-sm text-on-surface px-6 pb-2 mt-1">
+                  Xóa đề <strong>"{deleteTarget.title}"</strong>?
                 </p>
-                <div className="flex gap-3">
+                <div className="flex gap-3 px-6 pb-6 mt-4">
                   <button onClick={() => setDeleteTarget(null)}
-                    className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-sm">
+                    className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
                     Hủy
                   </button>
                   <button onClick={handleDelete}
-                    className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors text-sm">
+                    className="flex-1 bg-error text-on-error py-2.5 rounded-xl font-semibold hover:bg-error/90 transition-colors">
                     Xóa
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Publish Confirm Modal */}
+          {publishTarget && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+              onClick={() => setPublishTarget(null)}>
+              <div className="bg-surface-container-lowest rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+                {publishTarget.status === 'published' ? (
+                  <>
+                    <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+                      <span className="material-symbols-outlined text-secondary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>unpublished</span>
+                      <div>
+                        <h3 className="text-xl font-headline font-bold text-primary">Gỡ đăng đề</h3>
+                        <p className="text-sm text-outline">Học sinh sẽ không thấy bài thi này.</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-on-surface px-6 pb-2 mt-1">
+                      Bỏ đăng đề <strong>"{publishTarget.title}"</strong>? Học sinh đã nộp sẽ giữ bài nhưng không thấy kết quả.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+                      <span className="material-symbols-outlined text-secondary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>public</span>
+                      <div>
+                        <h3 className="text-xl font-headline font-bold text-primary">Xuất bản đề thi</h3>
+                        <p className="text-sm text-outline">Học sinh sẽ thấy ngay bài thi này.</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-on-surface px-6 pb-2 mt-1">
+                      Đăng đề <strong>"{publishTarget.title}"</strong>? Bài thi sẽ hiển thị ngay cho học sinh trong lớp.
+                    </p>
+                  </>
+                )}
+                <div className="flex gap-3 px-6 pb-6 mt-4">
+                  <button onClick={() => setPublishTarget(null)}
+                    className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
+                    Hủy
+                  </button>
+                  <button onClick={handlePublishConfirm}
+                    className="flex-1 bg-secondary text-on-secondary py-2.5 rounded-xl font-semibold hover:bg-secondary/90 transition-colors">
+                    {publishTarget.status === 'published' ? 'Gỡ đăng' : 'Đăng'}
                   </button>
                 </div>
               </div>

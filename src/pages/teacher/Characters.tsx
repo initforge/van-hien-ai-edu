@@ -24,8 +24,11 @@ interface TeacherCharacter {
 
 interface ChatThread {
   id: string;
-  character_name: string;
-  created_at: string;
+  characterName: string;
+  studentName: string;
+  workId: string;
+  createdAt: string;
+  messageCount: number;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -38,7 +41,7 @@ export default function CharactersPage() {
 
   // ── API data ────────────────────────────────────────────────────────────────
   const { data: charactersData, isLoading, mutate } = useSWR('/api/characters', fetcher);
-  const { data: chatThreadsData } = useSWR('/api/chat', fetcher);
+  const { data: chatThreadsData } = useSWR('/api/teacher/chat-threads', fetcher);
   const { data: worksData } = useSWR('/api/works', fetcher);
 
   const characters: TeacherCharacter[] = charactersData?.data ?? [];
@@ -56,53 +59,97 @@ export default function CharactersPage() {
 
   // ── Toggle active ───────────────────────────────────────────────────────────
   const handleToggleActive = async (char: TeacherCharacter) => {
-    await fetch('/api/characters', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: char.id, active: !char.active }),
-    });
-    mutate();
+    const newActive = !char.active;
+    // Optimistic
+    await mutate(
+      '/api/characters',
+      (current: { data: TeacherCharacter[] } | undefined) => ({
+        ...current,
+        data: (current?.data ?? []).map(c =>
+          c.id === char.id ? { ...c, active: newActive } : c
+        ),
+      }),
+      false
+    );
+    try {
+      await fetch('/api/characters', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: char.id, active: newActive }),
+      });
+    } catch {
+      // Rollback
+      await mutate('/api/characters');
+    }
   };
 
   // ── Save config ─────────────────────────────────────────────────────────────
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChar) return;
-    await fetch('/api/characters', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: selectedChar.id,
-        name: editForm.name,
-        initials: editForm.initials,
-        role: editForm.role,
-        description: editForm.description,
-        personality: editForm.personality,
-        systemPrompt: editForm.systemPrompt,
-        active: editForm.active,
+    await mutate(
+      '/api/characters',
+      (current: { data: TeacherCharacter[] } | undefined) => ({
+        ...current,
+        data: (current?.data ?? []).map(c =>
+          c.id === selectedChar.id ? { ...c, ...editForm } : c
+        ),
       }),
-    });
-    mutate();
+      false
+    );
+    try {
+      await fetch('/api/characters', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedChar.id,
+          name: editForm.name,
+          initials: editForm.initials,
+          role: editForm.role,
+          description: editForm.description,
+          personality: editForm.personality,
+          systemPrompt: editForm.systemPrompt,
+          active: editForm.active,
+        }),
+      });
+    } catch {
+      await mutate('/api/characters');
+    }
   };
 
   // ── Add character ───────────────────────────────────────────────────────────
   const handleAddCharacter = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    await fetch('/api/characters', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: formData.get('name'),
-        initials: formData.get('initials'),
-        role: formData.get('role'),
-        workId: formData.get('workId'),
-        personality: formData.get('personality'),
-        systemPrompt: formData.get('systemPrompt'),
+    const newChar = {
+      name: String(formData.get('name') || ''),
+      initials: String(formData.get('initials') || ''),
+      role: String(formData.get('role') || ''),
+      workId: String(formData.get('workId') || ''),
+      personality: String(formData.get('personality') || ''),
+      systemPrompt: String(formData.get('systemPrompt') || ''),
+    };
+    // Optimistic: add with temp id
+    const tempId = `temp-${Date.now()}`;
+    await mutate(
+      '/api/characters',
+      (current: { data: TeacherCharacter[] } | undefined) => ({
+        ...current,
+        data: [...(current?.data ?? []), { ...newChar, id: tempId, active: true } as TeacherCharacter],
       }),
-    });
-    mutate();
-    setShowAddForm(false);
+      false
+    );
+    try {
+      await fetch('/api/characters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newChar),
+      });
+      setShowAddForm(false);
+    } catch {
+      // Rollback
+      await mutate('/api/characters');
+    }
   };
 
   return (
@@ -346,19 +393,19 @@ export default function CharactersPage() {
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-                    {thread.character_name?.charAt(0) ?? '?'}
+                    {thread.characterName?.charAt(0) ?? '?'}
                   </div>
                   <div>
                     <div className="flex items-center gap-3 mb-1">
-                      <h4 className="font-bold text-primary">{thread.character_name}</h4>
+                      <h4 className="font-bold text-primary">{thread.characterName}</h4>
                       <span className="text-xs text-outline">•</span>
-                      <span className="text-xs text-slate-500 italic">Cuộc trò chuyện</span>
+                      <span className="text-xs text-slate-500 italic">{thread.studentName}</span>
                     </div>
-                    <p className="text-sm text-slate-600 line-clamp-1">Nhấn để xem chi tiết cuộc trò chuyện...</p>
+                    <p className="text-sm text-slate-600 line-clamp-1">{thread.messageCount} tin nhắn • Nhấn để xem chi tiết</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 flex-shrink-0">
-                  <span className="text-xs text-slate-400">{formatTimeAgo(thread.created_at)}</span>
+                  <span className="text-xs text-slate-400">{formatTimeAgo(thread.createdAt)}</span>
                   <span className="material-symbols-outlined text-outline group-hover:text-primary transition-colors">chevron_right</span>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 /**
  * POST /api/ai/exam-gen — AI exam/question generation
  *
- * Uses @cf/qwen/qwen2.5-72b-instruct for structured question generation.
+ * Uses @cf/mistralai/mistral-small-3.1-24b-instruct for structured question generation.
  * Creates exam + questions in DB. Called by teacher.
  *
  * Body: { workId?, classId?, title, type, duration, questions: [{content, type, points}] }
@@ -58,7 +58,7 @@ export async function onRequestPost({ request, env, data }) {
 
     // ── Call AI ─────────────────────────────────────────────────────────────
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
-      '@cf/qwen/qwen2.5-coder-32b-instruct',
+      '@cf/mistralai/mistral-small-3.1-24b-instruct',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
     );
 

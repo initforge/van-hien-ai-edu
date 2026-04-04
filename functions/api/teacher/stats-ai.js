@@ -4,10 +4,13 @@
 import { cachedJson } from '../_cache.js';
 import { jsonError } from '../_utils.js';
 
-export async function onRequestGet({ env, data }) {
+export async function onRequestGet({ env, data, request }) {
   try {
     const user = data?.user;
     if (!user || user.role !== 'teacher') return jsonError('Unauthorized', 401);
+
+    const url = new URL(request.url);
+    const classId = url.searchParams.get('classId');
 
     const [tokenRows, rubricRows, classRows, studentRows] = await Promise.all([
       // Token usage
@@ -50,22 +53,28 @@ export async function onRequestGet({ env, data }) {
       ).bind(user.id).all(),
 
       // Recent submissions for student stats
-      env.DB.prepare(`
-        SELECT u.id AS studentId, u.name AS studentName,
-               c.name AS className,
-               e.title AS examTitle,
-               s.status,
-               s.ai_score AS aiScore,
-               s.teacher_score AS teacherScore,
-               s.submitted_at AS submittedAt
-        FROM submissions s
-        JOIN exams e ON s.exam_id = e.id
-        JOIN users u ON s.student_id = u.id
-        JOIN classes c ON c.id = e.class_id
-        WHERE e.teacher_id = ?
-        ORDER BY s.submitted_at DESC
-        LIMIT 50`
-      ).bind(user.id).all(),
+      (async () => {
+        const where = ['e.teacher_id = ?'];
+        const binds = [user.id];
+        if (classId) { where.push('e.class_id = ?'); binds.push(classId); }
+        const whereStr = where.join(' AND ');
+        return env.DB.prepare(`
+          SELECT u.id AS studentId, u.name AS studentName,
+                 c.name AS className,
+                 e.title AS examTitle,
+                 s.status,
+                 s.ai_score AS aiScore,
+                 s.teacher_score AS teacherScore,
+                 s.submitted_at AS submittedAt
+          FROM submissions s
+          JOIN exams e ON s.exam_id = e.id
+          JOIN users u ON s.student_id = u.id
+          JOIN classes c ON c.id = e.class_id
+          WHERE ${whereStr}
+          ORDER BY s.submitted_at DESC
+          LIMIT 50`
+        ).bind(...binds).all();
+      })(),
     ]);
 
     const tokens = (tokenRows.results || []).map(r => ({

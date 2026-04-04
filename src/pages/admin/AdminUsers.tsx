@@ -8,12 +8,12 @@ type RoleFilter = 'all' | 'teacher' | 'admin';
 const ROLE_META = {
   all:     { label: 'Tất cả',     icon: 'group',          color: '#326286', bg: 'bg-[#326286]/10' },
   teacher: { label: 'Giáo viên',  icon: 'school',         color: '#005142', bg: 'bg-[#005142]/10' },
-  admin:   { label: 'Quản trị',   icon: 'admin_panel_settings', color: '#7c3aed', bg: 'bg-purple-100' },
+  admin:   { label: 'Quản trị',   icon: 'admin_panel_settings', color: '#6f0403', bg: 'bg-tertiary/10' },
 } as const;
 
 const ROLE_BADGE = {
   teacher: { bg: 'bg-[#005142]/10', text: 'text-[#005142]' },
-  admin:   { bg: 'bg-purple-100',   text: 'text-purple-700' },
+  admin:   { bg: 'bg-tertiary/10',  text: 'text-tertiary' },
 } as const;
 
 export default function AdminUsersPage() {
@@ -31,6 +31,7 @@ export default function AdminUsersPage() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetting, setResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState('');
 
   const filtered = filter === 'all'
     ? users.filter(u => u.role === 'teacher' || u.role === 'admin')
@@ -198,33 +199,38 @@ export default function AdminUsersPage() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-headline font-bold text-primary mb-6">
-              {editUser ? 'Sửa Người dùng' : 'Thêm Người dùng'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="bg-surface-container-lowest rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-primary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                {editUser ? 'edit' : 'person_add'}
+              </span>
+              <h3 className="text-xl font-headline font-bold text-primary">
+                {editUser ? 'Sửa Người dùng' : 'Thêm Người dùng'}
+              </h3>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4 px-6 pb-6">
               {submitError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">{submitError}</div>
+                <div className="p-3 bg-error-container border border-error/20 rounded-xl text-error text-sm">{submitError}</div>
               )}
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Họ tên</label>
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all" required />
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Username</label>
                 <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none font-mono transition-all" required />
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none font-mono transition-all bg-surface-container-lowest" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Email</label>
                 <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all" required />
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest" required />
               </div>
               <div>
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Vai trò</label>
                 <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all bg-white">
+                  className="w-full border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest cursor-pointer">
                   <option value="student">Học sinh</option>
                   <option value="teacher">Giáo viên</option>
                   <option value="admin">Quản trị</option>
@@ -232,11 +238,11 @@ export default function AdminUsersPage() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)}
-                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
+                  className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
                   Hủy
                 </button>
                 <button type="submit" disabled={saving}
-                  className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
+                  className="flex-1 bg-primary text-on-primary py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50">
                   {saving ? 'Đang lưu...' : 'Lưu'}
                 </button>
               </div>
@@ -248,20 +254,34 @@ export default function AdminUsersPage() {
       {/* Reset Password Modal */}
       {resetUser && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setResetUser(null)}>
-          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="material-symbols-outlined text-[#C9A84C] text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>key</span>
+          <div className="bg-surface-container-lowest rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-tertiary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>key</span>
               <h3 className="text-xl font-headline font-bold text-primary">Đặt lại mật khẩu</h3>
             </div>
-            <p className="text-sm text-outline mb-5">
+            <p className="text-sm text-outline px-6 mb-5">
               Đặt mật khẩu mới cho <strong>{resetUser.name}</strong>. Hãy gửi mật khẩu này cho người dùng qua kênh phù hợp (Zalo, email...).
             </p>
             {resetError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm mb-4">{resetError}</div>
+              <div className="mx-6 p-3 bg-error-container border border-error/20 rounded-xl text-error text-sm mb-4">{resetError}</div>
+            )}
+            {resetSuccess && (
+              <div className="mx-6 mb-4 p-4 bg-[#C9A84C]/10 border border-[#C9A84C]/30 rounded-xl">
+                <div className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[#C9A84C] text-lg shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                  <div>
+                    <p className="text-sm font-bold text-[#C9A84C]">Đặt lại thành công!</p>
+                    <p className="text-xs text-outline mt-1">Mật khẩu mới cho <strong>{resetUser?.name}</strong>:</p>
+                    <p className="font-mono font-bold text-lg text-[#C9A84C] mt-1">{resetSuccess}</p>
+                    <p className="text-[10px] text-outline mt-1">Hãy gửi cho người dùng qua kênh phù hợp.</p>
+                  </div>
+                </div>
+              </div>
             )}
             <form onSubmit={async (e) => {
               e.preventDefault();
               setResetError('');
+              setResetSuccess('');
               setResetting(true);
               try {
                 const res = await fetch('/api/admin/users', {
@@ -271,7 +291,8 @@ export default function AdminUsersPage() {
                 });
                 if (res.ok) {
                   mutate();
-                  setResetUser(null);
+                  setResetSuccess(resetPassword);
+                  setResetPassword('');
                 } else {
                   const err = await res.json().catch(() => ({}));
                   setResetError(err.error || 'Thao tác thất bại.');
@@ -280,27 +301,44 @@ export default function AdminUsersPage() {
                 setResetting(false);
               }
             }}>
-              <div className="mb-4">
+              <div className="mb-4 px-6">
                 <label className="block text-xs font-bold text-outline uppercase mb-1">Mật khẩu mới</label>
-                <input
-                  type="text"
-                  value={resetPassword}
-                  onChange={e => setResetPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu mới..."
-                  minLength={6}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#326286]/30 focus:border-[#326286] outline-none transition-all"
-                  autoFocus
-                  required
-                />
-                <p className="text-[10px] text-outline mt-1">Tối thiểu 6 ký tự</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={resetPassword}
+                    onChange={e => setResetPassword(e.target.value)}
+                    placeholder="Nhập hoặc tạo mật khẩu..."
+                    minLength={6}
+                    className="flex-1 border border-outline-variant rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all bg-surface-container-lowest"
+                    required
+                  />
+                  <button
+                    type="button"
+                    title="Tạo mật khẩu ngẫu nhiên"
+                    onClick={() => {
+                      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+                      const pwd = Array.from({ length: 8 }, (_, i) =>
+                        i === 0 ? chars[Math.floor(Math.random() * 26)] :
+                        i === 4 ? chars[26 + Math.floor(Math.random() * 26)] :
+                        chars[26 + Math.floor(Math.random() * (chars.length - 26))]
+                      ).join('');
+                      setResetPassword(pwd);
+                    }}
+                    className="px-3 py-2 border border-outline-variant rounded-xl hover:bg-surface-container-low transition-colors text-outline shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-base">autorenew</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-outline mt-1">Tối thiểu 6 ký tự. Dùng nút <span className="font-mono text-[9px] bg-surface-container-low px-1 rounded">autorenew</span> để tạo nhanh.</p>
               </div>
-              <div className="flex gap-3">
-                <button type="button" onClick={() => setResetUser(null)}
-                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
-                  Hủy
+              <div className="flex gap-3 px-6 pb-6">
+                <button type="button" onClick={() => { setResetUser(null); setResetSuccess(''); setResetPassword(''); }}
+                  className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
+                  Đóng
                 </button>
                 <button type="submit" disabled={resetting}
-                  className="flex-1 bg-[#C9A84C] text-white py-2.5 rounded-xl font-semibold hover:bg-[#C9A84C]/90 transition-colors disabled:opacity-50">
+                  className="flex-1 bg-tertiary text-on-tertiary py-2.5 rounded-xl font-semibold hover:bg-tertiary/90 transition-colors disabled:opacity-50">
                   {resetting ? 'Đang lưu...' : 'Đặt lại'}
                 </button>
               </div>
@@ -312,16 +350,22 @@ export default function AdminUsersPage() {
       {/* Delete Confirm */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl">
-            <h3 className="text-xl font-headline font-bold text-red-500 mb-2">Xác nhận xóa</h3>
-            <p className="text-sm text-slate-600 mb-6">Bạn có chắc muốn xóa người dùng này? Hành động không thể hoàn tác.</p>
-            <div className="flex gap-3">
+          <div className="bg-surface-container-lowest rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-6 pt-6 pb-2">
+              <span className="material-symbols-outlined text-error text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
+              <div>
+                <h3 className="text-xl font-headline font-bold text-error">Xác nhận xóa</h3>
+                <p className="text-sm text-outline">Hành động không thể hoàn tác.</p>
+              </div>
+            </div>
+            <p className="text-sm text-on-surface px-6 pb-6 mt-2">Bạn có chắc muốn xóa người dùng này?</p>
+            <div className="flex gap-3 px-6 pb-6">
               <button onClick={() => setConfirmDeleteId(null)}
-                className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-[#326286]/5 transition-colors">
+                className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
                 Hủy
               </button>
               <button onClick={handleDeleteConfirm} disabled={deleting}
-                className="flex-1 bg-red-500 text-white py-2.5 rounded-xl font-semibold hover:bg-red-600 transition-colors disabled:opacity-50">
+                className="flex-1 bg-error text-on-error py-2.5 rounded-xl font-semibold hover:bg-error/90 transition-colors disabled:opacity-50">
                 {deleting ? 'Đang xóa...' : 'Xóa'}
               </button>
             </div>

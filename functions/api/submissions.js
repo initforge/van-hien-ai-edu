@@ -1,6 +1,17 @@
 import { cachedJson } from './_cache.js';
 import { computeAndSaveSkillAssessments } from './_skillAssessments.js';
 
+async function logActivity(env, user, action, targetType, targetId, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, action, targetType, targetId, details).run();
+  } catch (e) {
+    console.error('activity_log failed:', e);
+  }
+}
+
 export async function onRequestGet({ env, data, request }) {
   try {
     const user = data?.user;
@@ -9,8 +20,18 @@ export async function onRequestGet({ env, data, request }) {
     const url = new URL(request.url);
     const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
     const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
+    const examId = url.searchParams.get('examId');
+    const classId = url.searchParams.get('classId');
 
     if (user.role === 'teacher') {
+      // Build WHERE clauses from optional filters
+      const where = [];
+      const binds = [user.id];
+      where.push('e.teacher_id = ?');
+      if (examId) { where.push('s.exam_id = ?'); binds.push(examId); }
+      if (classId) { where.push('e.class_id = ?'); binds.push(classId); }
+      const whereStr = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
       const [rowsResult, countResult] = await Promise.all([
         env.DB.prepare(
           `SELECT s.id, s.exam_id AS examId, s.student_id AS studentId,
@@ -21,13 +42,13 @@ export async function onRequestGet({ env, data, request }) {
            FROM submissions s
            JOIN exams e ON s.exam_id = e.id
            JOIN users u ON s.student_id = u.id
-           WHERE e.teacher_id = ?
+           ${whereStr}
            ORDER BY s.submitted_at DESC
            LIMIT ? OFFSET ?`
-        ).bind(user.id, limit, offset).all(),
+        ).bind(...binds, limit, offset).all(),
         env.DB.prepare(
-          "SELECT COUNT(*) AS total FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE e.teacher_id = ?"
-        ).bind(user.id).first(),
+          `SELECT COUNT(*) AS total FROM submissions s JOIN exams e ON s.exam_id = e.id ${whereStr}`
+        ).bind(...binds).first(),
       ]);
       return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
     } else {
@@ -58,7 +79,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!examId) return new Response(JSON.stringify({ error: 'Thiếu examId.' }), { status: 400 });
 
     const exam = await env.DB.prepare(
-      "SELECT id, work_id FROM exams WHERE id = ? LIMIT 1"
+      "SELECT id, title FROM exams WHERE id = ? LIMIT 1"
     ).bind(examId).first();
     if (!exam) return new Response(JSON.stringify({ error: 'Không tìm thấy đề thi.' }), { status: 404 });
 
@@ -75,6 +96,9 @@ export async function onRequestPost({ request, env, data }) {
     await env.DB.prepare(
       "INSERT INTO submissions (id, exam_id, student_id, status, submitted_at) VALUES (?, ?, ?, 'submitted', ?)"
     ).bind(submissionId, examId, user.id, now).run();
+
+    // Log: student submitted
+    await logActivity(env, user, 'submission_submitted', 'submission', submissionId, JSON.stringify({ title: exam.title || examId }));
 
     // Save essay answers
     if (answers && typeof answers === 'object') {
@@ -128,6 +152,14 @@ export async function onRequestPatch({ request, env, data }) {
     await env.DB.prepare(
       "UPDATE submissions SET teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
     ).bind(teacherScore ?? null, teacherComment ?? null, id).run();
+
+    // Log: teacher returned grade
+    const sub = await env.DB.prepare(
+      "SELECT s.id, e.title AS examTitle FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.id = ? LIMIT 1"
+    ).bind(id).first();
+    if (sub) {
+      await logActivity(env, user, 'grading_returned', 'submission', id, JSON.stringify({ title: sub.examTitle, score: teacherScore }));
+    }
 
     // Trigger skill assessment computation (non-blocking)
     computeAndSaveSkillAssessments(env, id).catch(e => console.error('skill assessment error:', e));

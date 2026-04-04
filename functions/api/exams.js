@@ -1,5 +1,16 @@
 import { cachedJson } from './_cache.js';
 
+async function logActivity(env, user, action, targetType, targetId, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, action, targetType, targetId, details).run();
+  } catch (e) {
+    console.error('activity_log failed:', e);
+  }
+}
+
 export async function onRequestGet({ env, data, request }) {
   try {
     const user = data?.user;
@@ -135,6 +146,10 @@ export async function onRequestPatch({ request, env, data }) {
 
     values.push(id);
     await env.DB.prepare(`UPDATE exams SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+
+    if (status === 'published') {
+      await logActivity(env, user, 'exam_published', 'exam', id, JSON.stringify({ title: title || id }));
+    }
 
     return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e) {

@@ -3,14 +3,15 @@ import { estimateTokens, estimateMessagesTokens } from './_utils.js';
 /**
  * Shared AI Service — van-hien-ai-edu
  *
- * Model routing by feature (CF Workers AI — March 2026):
+ * Model routing by feature (CF Workers AI — April 2026):
  *
- * Feature         | Model                                   | Use case
- * ----------------|-----------------------------------------|------------------------------
- * chatbot         | @cf/meta-llama/llama-3.1-8b-instruct  | Character chat (streaming)
- * grading         | @cf/google/gemma-3-12b-it              | Essay rubric scoring
- * exam_gen       | @cf/qwen/qwen2.5-coder-32b-instruct    | Exam question generation
- * multiverse     | @cf/qwen/qwq-32b                        | Storyline branching
+ * Feature              | Model                                   | Use case
+ * ---------------------|-----------------------------------------|------------------------------
+ * chatbot              | @cf/meta-llama/llama-3.1-8b-instruct  | Character chat (streaming)
+ * grading              | @cf/google/gemma-3-12b-it              | Essay rubric scoring
+ * work_analysis        | @cf/mistralai/mistral-small-3.1-24b-instruct | Literary analysis (Vietnamese)
+ * exam_gen             | @cf/mistralai/mistral-small-3.1-24b-instruct | Exam question generation
+ * multiverse           | @cf/qwen/qwq-32b                        | Storyline branching (reasoning)
  *
  * Falls back to stub text if AI binding is not configured.
  */
@@ -58,9 +59,8 @@ export function aiStream(model, opts = {}, feature = 'unknown') {
       try {
         const ai = globalThis[AI_BINDING];
         if (!ai) {
-          // Fallback: return stub
-          const stub = `[AI stub — ${feature}] Model not configured. Set AI binding in wrangler.toml.`;
-          controller.enqueue(encoder.encode(stub));
+          // Signal error to client instead of returning a misleading stub
+          controller.enqueue(encoder.encode('[Lỗi: AI chưa được cấu hình trên server.]\n'));
           controller.close();
           return;
         }
@@ -112,11 +112,10 @@ export async function aiCall(model, opts = {}) {
   try {
     const ai = globalThis[AI_BINDING];
     if (!ai) {
-      return {
-        text: `[AI stub] Model not configured for this feature.`,
-        inputTokens,
-        outputTokens: 0,
-      };
+      // Signal failure so callers know to propagate an error
+      const err = new Error('AI binding not configured');
+      err.name = 'AI_NOT_CONFIGURED';
+      throw err;
     }
 
     const result = await ai.run(model, {

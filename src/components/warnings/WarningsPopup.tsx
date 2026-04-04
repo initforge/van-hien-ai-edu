@@ -22,16 +22,15 @@ interface WarningsPopupProps {
   onClose: () => void;
 }
 
-const TABS = ['Tất cả', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7'] as const;
-const TAB_LABELS: Record<string, string> = {
-  'Tất cả': 'Tất cả',
-  W1: 'Nộp nhanh',
-  W2: 'Bài ngắn',
-  W3: 'Từ lặp',
-  W4: 'Điểm giảm',
-  W5: 'Điểm tăng',
-  W6: 'Trùng lặp',
-  W7: 'Hết hạn',
+const TABS = ['Tất cả', 'W1', 'W2', 'W3', 'W4', 'W5', 'W6'] as const;
+const TAB_LABELS: Record<string, { label: string; desc: string }> = {
+  'Tất cả': { label: 'Tất cả',    desc: '' },
+  W1: { label: 'Nộp nhanh',      desc: 'So sánh thời gian làm bài với số từ. Nếu tốc độ > 1.5 từ/giây → bất thường.' },
+  W2: { label: 'Bài ngắn',        desc: 'Bài viết dưới 100 từ. Có thể học sinh không hiểu đề hoặc làm cẩu thả.' },
+  W3: { label: 'Từ lặp',          desc: 'Đếm bigram lặp (cặp 2 từ trùng nhau). Tỷ lệ lặp > 15% → viết kém, thiếu từ vựng.' },
+  W4: { label: 'Điểm giảm',       desc: 'So sánh điểm với TB 5 bài gần nhất. Giảm > 2 lần độ lệch chuẩn → cần chú ý.' },
+  W5: { label: 'Điểm tăng',      desc: 'Điểm tăng bất thường. Có thể học sinh có tiến bộ thật hoặc gian lận.' },
+  W6: { label: 'Trùng lặp',       desc: 'Jaccard similarity giữa 2 bài cùng lớp > 70%. Có thể copy bài nhau.' },
 };
 
 export default function WarningsPopup({ open, onClose }: WarningsPopupProps) {
@@ -103,6 +102,14 @@ export default function WarningsPopup({ open, onClose }: WarningsPopupProps) {
             </button>
           ))}
         </div>
+
+        {/* Tab description */}
+        {activeTab !== 'Tất cả' && TAB_LABELS[activeTab]?.desc && (
+          <div className="flex items-start gap-2 px-6 py-2 bg-tertiary/5 border-b border-tertiary/20 flex-shrink-0">
+            <span className="material-symbols-outlined text-tertiary text-sm mt-0.5 shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
+            <p className="text-xs text-tertiary leading-relaxed">{TAB_LABELS[activeTab].desc}</p>
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">

@@ -70,7 +70,6 @@ export interface Work {
   grade: number | null;
   genre: string | null;
   content: string | null;
-  status: 'pending' | 'analyzed';
   createdAt: string;
   // Extended fields (admin/teacher)
   analysisStatus?: 'none' | 'processing' | 'done';

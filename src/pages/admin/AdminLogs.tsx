@@ -82,7 +82,7 @@ export default function AdminLogsPage() {
     ? { startDate: customStart, endDate: customEnd }
     : getDateRange(timePreset);
 
-  const { data, isLoading } = useSWR(
+  const { data, isLoading, error } = useSWR(
     buildUrl({ limit, action: activeAction, role: filterRole, ...range }),
     fetcher
   );
@@ -189,6 +189,12 @@ export default function AdminLogsPage() {
       <div className="space-y-3">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => <LogSkeleton key={i} />)
+        ) : error ? (
+          <div className="bg-white/60 rounded-2xl border border-red-200 py-12 text-center">
+            <span className="material-symbols-outlined text-5xl text-red-400 mb-3 block">error</span>
+            <p className="text-red-500 font-semibold">Không tải được nhật ký</p>
+            <p className="text-outline text-sm mt-1">{String(error?.message || error)}</p>
+          </div>
         ) : logs.length === 0 ? (
           <div className="bg-white/60 rounded-2xl border border-[#326286]/20 py-16 text-center">
             <span className="material-symbols-outlined text-5xl text-outline mb-3 block">history</span>

@@ -87,7 +87,7 @@ export async function onRequestGet({ env, data, request }) {
     if (!cls) return jsonError('Không tìm thấy lớp.', 404);
 
     const rows = await env.DB.prepare(`
-      SELECT u.id, u.name, u.gender, u.birthdate, u.username,
+      SELECT u.id, u.name, u.gender, u.birthdate, u.username, u.password_plain,
              sp.avg_score AS avgScore, sp.grade_label AS gradeLabel,
              COUNT(s.id) AS submissionCount,
              AVG(COALESCE(s.teacher_score, s.ai_score)) AS recentAvg
@@ -124,6 +124,32 @@ export async function onRequestPost({ request, env, data }) {
   }
 }
 
+// PATCH /api/teacher/students — reset password
+export async function onRequestPatch({ request, env, data }) {
+  try {
+    const user = data?.user;
+    if (!user || user.role !== 'teacher') return jsonError('Unauthorized', 401);
+
+    const body = await request.json();
+    const { studentId, password } = body;
+
+    if (!studentId || !password) return jsonError('Thiếu studentId hoặc password.', 400);
+    if (password.length < 6) return jsonError('Mật khẩu phải ít nhất 6 ký tự.', 400);
+
+    // Verify student belongs to a class owned by this teacher
+    const cls = await env.DB.prepare(
+      "SELECT c.id FROM classes c JOIN class_students cs ON cs.class_id = c.id WHERE cs.student_id = ? AND c.teacher_id = ? LIMIT 1"
+    ).bind(studentId, user.id).first();
+    if (!cls) return jsonError('Không tìm thấy học sinh trong lớp của bạn.', 404);
+
+    await env.DB.prepare("UPDATE users SET password_plain = ? WHERE id = ?").bind(password, studentId).run();
+    return cachedJson({ success: true }, { profile: 'dynamic' });
+  } catch (e) {
+    console.error('teacher/students PATCH error:', e);
+    return jsonError('Lỗi khi cập nhật mật khẩu.', 500);
+  }
+}
+
 async function handleImport({ request, env, data }) {
   const user = data.user;
   const body = await request.json();
@@ -135,7 +161,7 @@ async function handleImport({ request, env, data }) {
   }
 
   const now = new Date().toISOString();
-  const results = { created: 0, skipped: [] };
+  const results = { created: 0, skipped: [], credentials: [] };
 
   for (const s of students) {
     if (!s.name?.trim()) { results.skipped.push({ name: s.name, reason: 'Thiếu tên' }); continue; }
@@ -145,25 +171,15 @@ async function handleImport({ request, env, data }) {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '').slice(0, 20));
       const id = crypto.randomUUID();
 
-      // Hash password
-      const salt = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
-      const saltBytes = new TextEncoder().encode(salt);
-      const key = await crypto.subtle.importKey(
-        'raw', new TextEncoder().encode(s.password || '123456'),
-        { name: 'PBKDF2' }, false, ['deriveBits']
-      );
-      const derived = await crypto.subtle.deriveBits(
-        { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-512' },
-        key, 512
-      );
-      const derivedHex = Array.from(new Uint8Array(derived))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
-      const hash = `${salt}:${derivedHex}`;
+      // Plaintext password: ddMMyyyy if birthdate, else username + '1234'
+      const password = s.birthdate
+        ? s.birthdate.replace(/-/g, '')
+        : (username + '1234');
 
       await env.DB.prepare(
-        `INSERT INTO users (id, name, email, username, password_hash, role, gender, birthdate, created_at)
+        `INSERT INTO users (id, name, email, username, password_plain, role, gender, birthdate, created_at)
          VALUES (?, ?, ?, ?, ?, 'student', ?, ?, ?)`
-      ).bind(id, s.name.trim(), `${username}@vanhocai.edu.vn`, username, hash,
+      ).bind(id, s.name.trim(), `${username}@vanhocai.edu.vn`, username, password,
              s.gender || null, s.birthdate || null, now).run();
 
       await env.DB.prepare(
@@ -171,6 +187,7 @@ async function handleImport({ request, env, data }) {
       ).bind(crypto.randomUUID(), classId, id).run();
 
       results.created++;
+      results.credentials.push({ name: s.name.trim(), username, password });
     } catch (err) {
       results.skipped.push({ name: s.name, reason: err.message });
     }

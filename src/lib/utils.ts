@@ -53,9 +53,3 @@ export const SUBMISSION_STATUS = {
   DRAFT: 'draft',
   SUBMITTED: 'submitted',
 } as const;
-
-/** Work status constants */
-export const WORK_STATUS = {
-  ANALYZED: 'analyzed',
-  PENDING: 'pending',
-} as const;

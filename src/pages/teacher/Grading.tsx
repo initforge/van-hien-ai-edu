@@ -59,8 +59,14 @@ export default function GradingPage() {
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   const { data: classesData, mutate: mutateClasses } = useSWR('/api/classes', fetcher);
-  const { data: examsData, mutate: mutateExams } = useSWR('/api/exams', fetcher);
-  const { data: submissionsData, mutate: mutateSubmissions } = useSWR('/api/submissions', fetcher);
+  const { data: examsData, mutate: mutateExams } = useSWR(
+    selectedClass ? `/api/exams?classId=${selectedClass}` : null,
+    fetcher
+  );
+  const { data: submissionsData, mutate: mutateSubmissions } = useSWR(
+    selectedExam ? `/api/submissions?examId=${selectedExam}` : null,
+    fetcher
+  );
   const { data: rubricData } = useSWR<{ data: { name: string; description: string }[] }>('/api/teacher/rubric', fetcher);
 
   const CLASSES: ClassRow[] = classesData?.data ?? [];
@@ -141,7 +147,7 @@ export default function GradingPage() {
     setAiGrading(true);
     setAiResult(null);
     try {
-      const res = await fetch('/api/ai/grade', {
+      const res = await fetch('/api/ai/grade-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId: selectedStudent }),
@@ -165,8 +171,6 @@ export default function GradingPage() {
           const avg = data.aiScore / rubricScores.length;
           setRubricScores(prev => prev.map(r => ({ ...r, ai: avg.toFixed(1) })));
         }
-        await mutateSubmissions();
-        await mutateExams();
       } else if (data.error) {
         alert(data.error);
       }
@@ -180,6 +184,21 @@ export default function GradingPage() {
   const handleReturn = async () => {
     if (!selectedStudent) return;
     setIsSubmitting(true);
+    const prevSubmissions = submissionsData?.data ?? [];
+
+    // Optimistic: mark as returned instantly
+    if (selectedExam) {
+      await mutateSubmissions(
+        (current: { data: SubmissionRow[] } | undefined) => ({
+          ...current,
+          data: (current?.data ?? []).map(s =>
+            s.id === selectedStudent ? { ...s, status: 'returned' as const } : s
+          ),
+        }),
+        false
+      );
+    }
+
     try {
       const res = await fetch('/api/submissions', {
         method: 'PATCH',
@@ -192,12 +211,16 @@ export default function GradingPage() {
       });
       const data = await res.json();
       if (data.success) {
-        await mutateSubmissions();
-        await mutateExams();
+        showToast('Đã trả bài.');
         goBack();
-      } else if (data.error) {
+      } else {
+        // Rollback
+        await mutateSubmissions();
         alert(data.error);
       }
+    } catch {
+      await mutateSubmissions();
+      alert('Lỗi khi trả bài.');
     } finally {
       setIsSubmitting(false);
     }

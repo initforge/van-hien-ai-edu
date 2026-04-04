@@ -57,7 +57,7 @@ export async function onRequestGet({ env, data, request }) {
       ).bind(classId).first();
 
       const students = await env.DB.prepare(`
-        SELECT u.id, u.name, u.email, u.username, cs.id AS enrollmentId, s.submitted_at AS lastSubmitted
+        SELECT u.id, u.name, u.email, u.username, u.password_plain, cs.id AS enrollmentId, s.submitted_at AS lastSubmitted
         FROM class_students cs
         JOIN users u ON cs.student_id = u.id
         LEFT JOIN (

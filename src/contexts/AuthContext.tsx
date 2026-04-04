@@ -1,11 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-
 import { useNavigate } from 'react-router-dom';
+import { clearTokens, getToken } from '../lib/fetcher';
 
 export interface User {
   id: string;
   name: string;
-  email: string;
   role: 'teacher' | 'student' | 'admin';
   avatar?: string;
 }
@@ -25,18 +24,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   const fetchUser = async () => {
+    const token = getToken();
+    if (!token) {
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
     try {
-      const res = await fetch('/api/me', { credentials: 'include' });
+      const res = await fetch('/api/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.status === 401) {
-        // Explicit 401 = logged out
+        clearTokens();
         setUser(null);
       } else if (res.ok) {
         const data = await res.json();
         setUser(data.user);
       }
-      // Any other error (network, 500, etc.) = keep current user state
     } catch {
-      // Network error = don't log out user, keep current state
+      // Network error = keep current state
     } finally {
       setIsLoading(false);
     }
@@ -47,10 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = async () => {
-    try {
-      await fetch('/api/auth', { method: 'DELETE', credentials: 'include' });
-    } catch (_) { /* best-effort */ }
-    document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    const token = getToken();
+    if (token) {
+      try {
+        await fetch('/api/auth', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch (_) { /* best-effort */ }
+    }
+    clearTokens();
     setUser(null);
     navigate('/');
   };

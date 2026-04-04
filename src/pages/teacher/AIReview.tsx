@@ -64,6 +64,7 @@ interface SubmissionRow {
 
 export default function AIReviewPage() {
   const [tab, setTab] = useState<Tab>('class_stats');
+  const [filterClass, setFilterClass] = useState('');
   const [editingRubric, setEditingRubric] = useState<RubricRow | null>(null);
   const [rubricForm, setRubricForm] = useState({ name: '', description: '', weight: 25, hintPrompt: '' });
   const [saving, setSaving] = useState(false);
@@ -74,7 +75,7 @@ export default function AIReviewPage() {
     totalTokens: number;
     classStats: ClassStat[];
     recentSubmissions: SubmissionRow[];
-  }>('/api/teacher/stats-ai', fetcher);
+  }>(`/api/teacher/stats-ai${filterClass ? `?classId=${filterClass}` : ''}`, fetcher);
 
   const rubrics: RubricRow[] = data?.rubrics ?? [];
   const tokens: TokenRow[] = data?.tokens ?? [];
@@ -150,6 +151,29 @@ export default function AIReviewPage() {
       <div className="mb-10">
         <span className="text-xs font-bold text-secondary uppercase tracking-widest block mb-2">Trung tâm điều hành AI</span>
         <h2 className="text-4xl font-headline font-bold text-primary">Phân tích & Duyệt AI</h2>
+      </div>
+
+      {/* Class Filter */}
+      <div className="flex items-center gap-3 mb-6">
+        <span className="text-xs font-bold text-secondary uppercase tracking-wider">Lọc theo lớp:</span>
+        <div className="relative">
+          <select
+            value={filterClass}
+            onChange={e => setFilterClass(e.target.value)}
+            className="appearance-none bg-surface-container-low border-none rounded-lg px-4 py-2 pr-10 text-sm font-medium focus:ring-1 focus:ring-primary/20 text-on-surface cursor-pointer"
+          >
+            <option value="">Tất cả lớp</option>
+            {classStats.map((c: ClassStat) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+        </div>
+        {filterClass && (
+          <button onClick={() => setFilterClass('')} className="text-xs text-primary hover:underline font-semibold">
+            ✕ Bỏ lọc
+          </button>
+        )}
       </div>
 
       {/* Tabs */}

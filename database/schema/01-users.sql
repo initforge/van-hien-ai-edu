@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
   avatar       TEXT,
   -- Auth fields
   username       TEXT,
-  password_hash  TEXT,  -- PBKDF2: salt:hash
+  password_hash  TEXT,  -- PBKDF2: salt:hash (legacy)
+  password_plain TEXT,   -- plaintext password (current)
   -- Student fields
   gender         TEXT,
   birthdate      TEXT,  -- yyyy-mm-dd

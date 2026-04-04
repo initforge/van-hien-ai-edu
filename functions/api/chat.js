@@ -2,7 +2,6 @@ import { checkRateLimit } from './_rateLimit.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { aiStream } from './_ai.js';
 import { jsonError, estimateTokens } from './_utils.js';
-import { WORK_STATUS } from './_constants.js';
 
 // ─── System prompts by character ──────────────────────────────────────────────
 
@@ -80,8 +79,8 @@ export async function onRequestPost({ request, data, env }) {
         const studentChar = await env.DB.prepare(
           `SELECT c.id FROM characters c
            JOIN works w ON c.work_id = w.id
-           WHERE c.name = ? AND c.active = 1 AND w.status = ? LIMIT 1`
-        ).bind(characterId, WORK_STATUS.ANALYZED).first();
+           WHERE c.name = ? AND c.active = 1 AND w.analysis_status = 'done' LIMIT 1`
+        ).bind(characterId).first();
         authorized = !!studentChar;
       }
 

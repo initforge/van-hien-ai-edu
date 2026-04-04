@@ -13,9 +13,9 @@ export async function onRequestGet({ env, data, request }) {
     const analysisStatus = url.searchParams.get('analysisStatus');
 
     const binds = [];
-    let where = user.role === 'teacher' ? 'WHERE teacher_id = ?' : 'WHERE status = ?';
+    let where = user.role === 'teacher' ? 'WHERE teacher_id = ?' : 'WHERE analysis_status = ?';
     if (user.role === 'teacher') binds.push(user.id);
-    else binds.push('analyzed');
+    else binds.push('done');
 
     if (grade) {
       where += ' AND grade = ?';
@@ -32,7 +32,7 @@ export async function onRequestGet({ env, data, request }) {
 
     const [rowsResult, countResult] = await Promise.all([
       env.DB.prepare(`
-        SELECT id, title, author, grade, genre, content, status,
+        SELECT id, title, author, grade, genre, content,
                analysis_status AS analysisStatus,
                chunk_count AS chunkCount,
                word_count AS wordCount,
@@ -59,7 +59,7 @@ export async function onRequestPost({ request, env, data }) {
     const body = await request.json();
     const {
       title, author, grade, genre, content,
-      fileName, fileData, analysisStatus,
+      fileName, analysisStatus,
     } = body;
 
     if (!title || !author) {
@@ -71,17 +71,16 @@ export async function onRequestPost({ request, env, data }) {
     const wordCount = content ? content.trim().split(/\s+/).filter(Boolean).length : null;
 
     await env.DB.prepare(`
-      INSERT INTO works (id, title, author, grade, genre, content, status, teacher_id,
-                         file_name, file_data, word_count, analysis_status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      INSERT INTO works (id, title, author, grade, genre, content, teacher_id,
+                         file_name, word_count, analysis_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       id, title, author, grade || null, genre || null,
-      content || null, content ? 'pending' : 'none',
-      user.id,
-      fileName || null, fileData || null, wordCount, analysisStatus || 'none', now
+      content || null, user.id,
+      fileName || null, wordCount, analysisStatus || 'none', now
     ).run();
 
-    return cachedJson({ id, title, author, status: 'pending', analysisStatus: 'none', createdAt: now }, { status: 201, profile: 'nocache' });
+    return cachedJson({ id, title, author, analysisStatus: 'none', createdAt: now }, { status: 201, profile: 'nocache' });
   } catch (e) {
     console.error('works POST error:', e);
     return cachedJson({ error: 'Lỗi khi tạo tác phẩm.' }, { status: 500, profile: 'nocache' });

@@ -18,6 +18,7 @@ interface StudentRow {
   gender: string | null;
   birthdate: string | null;
   username: string;
+  password_plain: string | null;
   avgScore: number | null;
   gradeLabel: string | null;
 }
@@ -28,7 +29,13 @@ export default function ClassManagementPage() {
   const [createName, setCreateName] = useState('');
   const [createGrade, setCreateGrade] = useState('');
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ created: number; skipped: { name: string; reason: string }[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: { name: string; reason: string }[]; credentials: { name: string; username: string; password: string }[] } | null>(null);
+  const [showCredentials, setShowCredentials] = useState<{ name: string; username: string; password: string }[] | null>(null);
+  const [editStudentPw, setEditStudentPw] = useState<StudentRow | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [pwError, setPwError] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: classesData, mutate: mutateClasses } = useSWR<{ data: ClassRow[] }>('/api/teacher/classes', fetcher);
@@ -43,15 +50,38 @@ export default function ClassManagementPage() {
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createName.trim()) return;
-    const res = await fetch('/api/teacher/classes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: createName.trim(), gradeLevel: createGrade ? parseInt(createGrade) : undefined }),
-    });
-    if (res.ok) {
-      setCreateName('');
-      setCreateGrade('');
-      setShowCreate(false);
+    const tempId = `temp-${Date.now()}`;
+    const newClass: ClassRow = {
+      id: tempId,
+      name: createName.trim(),
+      gradeLevel: createGrade ? parseInt(createGrade) : null,
+      inviteCode: null,
+      studentCount: 0,
+      pendingCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    // Optimistic
+    await mutateClasses(
+      (current: { data: ClassRow[] } | undefined) => ({
+        ...current,
+        data: [...(current?.data ?? []), newClass],
+      }),
+      false
+    );
+    setCreateName('');
+    setCreateGrade('');
+    setShowCreate(false);
+    try {
+      const res = await fetch('/api/teacher/classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: createName.trim(), gradeLevel: createGrade ? parseInt(createGrade) : undefined }),
+      });
+      if (res.ok) {
+        await mutateClasses();
+      }
+    } catch {
+      // Rollback
       await mutateClasses();
     }
   };
@@ -72,7 +102,6 @@ export default function ClassManagementPage() {
       });
       const data = await res.json();
       setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? skipped });
-      await mutateStudents();
     } catch {
       setImportResult({ created: 0, skipped: [{ name: 'Lỗi', reason: 'Không đọc được file' }] });
     } finally {
@@ -82,8 +111,43 @@ export default function ClassManagementPage() {
 
   const handleRemoveStudent = async (studentId: string) => {
     if (!activeClass) return;
-    await fetch(`/api/teacher/students?classId=${activeClass.id}&studentId=${studentId}`, { method: 'DELETE' });
-    await mutateStudents();
+    // Optimistic
+    await mutateStudents(
+      (current: { data: StudentRow[] } | undefined) => ({
+        ...current,
+        data: (current?.data ?? []).filter(s => s.id !== studentId),
+      }),
+      false
+    );
+    try {
+      await fetch(`/api/teacher/students?classId=${activeClass.id}&studentId=${studentId}`, { method: 'DELETE' });
+    } catch {
+      await mutateStudents();
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editStudentPw || !newPassword.trim()) return;
+    if (newPassword.length < 6) { setPwError('Mật khẩu phải ít nhất 6 ký tự.'); return; }
+    setPwSaving(true);
+    setPwError('');
+    try {
+      const res = await fetch('/api/teacher/students', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: editStudentPw.id, password: newPassword }),
+      });
+      if (res.ok) {
+        setPwSuccess(newPassword);
+        await mutateStudents();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setPwError(err.error || 'Thao tác thất bại.');
+      }
+    } finally {
+      setPwSaving(false);
+    }
   };
 
   const gradeLabel = (score: number | null) => {
@@ -209,16 +273,29 @@ export default function ClassManagementPage() {
           {/* Import result */}
           {importResult && (
             <div className={`mb-6 p-4 rounded-xl ${importResult.created > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-              <p className="font-bold text-sm mb-1">
-                {importResult.created > 0
-                  ? `Đã tạo ${importResult.created} tài khoản học sinh.`
-                  : 'Không tạo được tài khoản nào.'}
-              </p>
-              {importResult.skipped.length > 0 && importResult.skipped.map((s, i) => (
-                <p key={i} className="text-xs text-slate-500">
-                  Bỏ qua "{s.name}": {s.reason}
-                </p>
-              ))}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-bold text-sm mb-1">
+                    {importResult.created > 0
+                      ? `Đã tạo ${importResult.created} tài khoản học sinh.`
+                      : 'Không tạo được tài khoản nào.'}
+                  </p>
+                  {importResult.skipped.length > 0 && importResult.skipped.map((s, i) => (
+                    <p key={i} className="text-xs text-slate-500">
+                      Bỏ qua "{s.name}": {s.reason}
+                    </p>
+                  ))}
+                </div>
+                {importResult.created > 0 && (
+                  <button
+                    onClick={() => setShowCredentials(importResult.credentials)}
+                    className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">visibility</span>
+                    Xem tài khoản
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -229,7 +306,7 @@ export default function ClassManagementPage() {
                 <tr className="border-b border-outline-variant/20">
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Họ tên</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Username</th>
-                  <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Ngày sinh</th>
+                  <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Mật khẩu</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Điểm TB</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Hành động</th>
                 </tr>
@@ -240,8 +317,14 @@ export default function ClassManagementPage() {
                   return (
                     <tr key={s.id} className="hover:bg-surface-container-low/30 transition-colors">
                       <td className="py-3 px-4 font-medium text-on-surface">{s.name}</td>
-                      <td className="py-3 px-4 text-sm text-outline font-mono">{s.username}</td>
-                      <td className="py-3 px-4 text-sm text-outline">{s.birthdate || '—'}</td>
+                      <td className="py-3 px-4 text-sm text-secondary font-mono">{s.username}</td>
+                      <td className="py-3 px-4">
+                        {s.password_plain ? (
+                          <span className="font-mono text-xs bg-[#C9A84C]/10 text-[#C9A84C] px-2 py-1 rounded-lg font-bold">{s.password_plain}</span>
+                        ) : (
+                          <span className="text-outline/40 text-xs italic">—</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         {s.avgScore != null ? (
                           <span className={`font-bold ${gl?.color}`}>
@@ -254,10 +337,16 @@ export default function ClassManagementPage() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
+                          onClick={() => { setEditStudentPw(s); setNewPassword(''); setPwError(''); }}
+                          className="text-[#C9A84C] hover:text-[#b8973d] text-sm font-medium transition-colors mr-3"
+                        >
+                          Đổi mk
+                        </button>
+                        <button
                           onClick={() => handleRemoveStudent(s.id)}
                           className="text-red-400 hover:text-red-600 text-sm font-medium transition-colors"
                         >
-                          Xóa khỏi lớp
+                          Xóa
                         </button>
                       </td>
                     </tr>
@@ -320,6 +409,141 @@ export default function ClassManagementPage() {
                 <button type="submit"
                   className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors">
                   Tạo lớp
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Credentials Modal */}
+      {showCredentials && showCredentials.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowCredentials(null)}>
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  badge
+                </span>
+                <div>
+                  <h3 className="text-lg font-headline font-bold text-primary">Tài khoản học sinh</h3>
+                  <p className="text-xs text-outline">{showCredentials.length} tài khoản — mật khẩu = ngày sinh (ddMMyyyy)</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCredentials(null)}
+                className="text-outline hover:text-on-surface transition-colors p-1">
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* Credential list */}
+            <div className="overflow-y-auto flex-1">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-surface-container-lowest border-b border-outline-variant/20">
+                  <tr>
+                    <th className="text-left px-6 py-2 text-[10px] font-bold text-outline uppercase tracking-widest">Họ tên</th>
+                    <th className="text-left px-6 py-2 text-[10px] font-bold text-outline uppercase tracking-widest">Username</th>
+                    <th className="text-left px-6 py-2 text-[10px] font-bold text-outline uppercase tracking-widest">Mật khẩu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {showCredentials.map((c, i) => (
+                    <tr key={i} className="border-b border-outline-variant/10 hover:bg-surface-container-low/30">
+                      <td className="px-6 py-2.5 font-medium text-on-surface">{c.name}</td>
+                      <td className="px-6 py-2.5 font-mono text-xs text-secondary">{c.username}</td>
+                      <td className="px-6 py-2.5">
+                        <span className="font-mono text-xs bg-secondary/10 text-secondary px-2 py-1 rounded-lg">{c.password}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-outline-variant/20 shrink-0 bg-surface-container-lowest">
+              <p className="text-xs text-outline flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-tertiary">info</span>
+                Gửi thông tin đăng nhập cho học sinh qua kênh phù hợp (Zalo, email...). Mật khẩu có thể đổi sau khi đăng nhập.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {editStudentPw && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => { setEditStudentPw(null); setPwSuccess(''); setNewPassword(''); }}>
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                key
+              </span>
+              <div>
+                <h3 className="text-lg font-headline font-bold text-primary">Đổi mật khẩu</h3>
+                <p className="text-xs text-outline">{editStudentPw.name}</p>
+              </div>
+            </div>
+
+            {pwSuccess && (
+              <div className="mx-6 mt-4 p-4 bg-[#C9A84C]/10 border border-[#C9A84C]/30 rounded-xl">
+                <p className="text-sm font-bold text-[#C9A84C]">Đổi thành công!</p>
+                <p className="font-mono font-bold text-lg text-[#C9A84C] mt-1">{pwSuccess}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="px-6 pb-6 mt-2">
+              {pwError && (
+                <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-500 text-sm">{pwError}</div>
+              )}
+              <div className="mb-4">
+                <label className="block text-xs font-bold text-outline uppercase mb-1">Mật khẩu mới</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới..."
+                    minLength={6}
+                    className="flex-1 border border-outline-variant rounded-xl px-4 py-2.5 bg-surface-container-lowest focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition-all"
+                    autoFocus
+                    required
+                  />
+                  <button
+                    type="button"
+                    title="Tạo mật khẩu ngẫu nhiên"
+                    onClick={() => {
+                      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+                      const pwd = Array.from({ length: 8 }, (_, i) =>
+                        i === 0 ? chars[Math.floor(Math.random() * 26)] :
+                        i === 4 ? chars[26 + Math.floor(Math.random() * 26)] :
+                        chars[26 + Math.floor(Math.random() * (chars.length - 26))]
+                      ).join('');
+                      setNewPassword(pwd);
+                    }}
+                    className="px-3 border border-outline-variant rounded-xl hover:bg-surface-container-low transition-colors text-outline shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-base">autorenew</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-outline mt-1">Tối thiểu 6 ký tự</p>
+              </div>
+              <div className="flex gap-3">
+                <button type="button"
+                  onClick={() => { setEditStudentPw(null); setPwSuccess(''); setNewPassword(''); }}
+                  className="flex-1 border border-outline-variant py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors">
+                  Đóng
+                </button>
+                <button type="submit" disabled={pwSaving}
+                  className="flex-1 bg-secondary text-white py-2.5 rounded-xl font-semibold hover:bg-secondary/90 transition-colors disabled:opacity-50">
+                  {pwSaving ? 'Đang lưu...' : 'Lưu'}
                 </button>
               </div>
             </form>

@@ -45,10 +45,14 @@ export async function onRequestPost({ env, data, request }) {
     const title = work.title;
     const author = work.author || 'Không rõ';
 
-    // ── Step 1: Understand work context ───────────────────────────────────────
+    // Accumulate token usage across all AI calls
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    // ── Step 1: Understand work context (sequential — needed for step 3) ────
     let workContext = '';
     try {
-      const contextResult = await aiCall('@cf/qwen/qwen2.5-coder-32b-instruct', {
+      const contextResult = await aiCall('@cf/mistralai/mistral-small-3.1-24b-instruct', {
         systemPrompt: `Bạn là một chuyên gia nghiên cứu văn học Việt Nam. Đọc kỹ tác phẩm sau và trả lời bằng JSON (không có gì khác ngoài JSON):
 
 {
@@ -63,6 +67,9 @@ Chỉ trả về JSON, không giải thích gì thêm.`,
         maxTokens: 400,
         temperature: 0.2,
       });
+      totalInputTokens += contextResult.inputTokens;
+      totalOutputTokens += contextResult.outputTokens;
+
       const parsed = JSON.parse(contextResult.text.replace(/```json\n?/g, '').trim());
       workContext = `Thời đại: ${parsed.era}. Chủ đề chính: ${(parsed.themes || []).join(', ')}. Cấu trúc: ${parsed.structure}. Giọng điệu: ${parsed.tone}.`;
     } catch (e) {
@@ -72,12 +79,11 @@ Chỉ trả về JSON, không giải thích gì thêm.`,
 
     // Save context section
     await upsertAnalysis(env, id, 'context', workContext || 'Đang phân tích...', 1);
-    await logToken(env, user.id, 'work_analysis', `Analyze context: ${title}`, 0, 0);
 
-    // ── Step 2: Chunk text ───────────────────────────────────────────────────
+    // ── Step 2: Chunk text (sequential — needed for step 3) ─────────────────
     let chunks = [];
     try {
-      const chunkResult = await aiCall('@cf/qwen/qwen2.5-coder-32b-instruct', {
+      const chunkResult = await aiCall('@cf/mistralai/mistral-small-3.1-24b-instruct', {
         systemPrompt: `Bạn là chuyên gia chia nhỏ văn bản văn học Việt Nam. Chia tác phẩm thành các đoạn (chunks) có ý nghĩa tự nhiên, mỗi chunk khoảng 500-800 từ. Mỗi chunk phải tách theo ranh giới đoạn văn tự nhiên, không cắt giữa câu.
 
 Trả về JSON array (không có gì khác ngoài JSON):
@@ -91,6 +97,9 @@ Trả về JSON array (không có gì khác ngoài JSON):
         maxTokens: 4000,
         temperature: 0.2,
       });
+      totalInputTokens += chunkResult.inputTokens;
+      totalOutputTokens += chunkResult.outputTokens;
+
       const raw = chunkResult.text.replace(/```json\n?/g, '').replace(/```\n?$/g, '').trim();
       chunks = JSON.parse(raw);
       if (!Array.isArray(chunks)) chunks = [];
@@ -113,26 +122,45 @@ Trả về JSON array (không có gì khác ngoài JSON):
     // Update chunk_count
     await env.DB.prepare('UPDATE works SET chunk_count = ? WHERE id = ?').bind(chunks.length, id).run();
 
-    // ── Step 3: Analyze each section ─────────────────────────────────────────
-    const chunkSummaries = chunks.map((c, i) => `[Phần ${i + 1} - ${c.heading}]: ${c.content.slice(0, 200)}...`).join('\n');
+    // ── Step 3: Analyze all sections in parallel ─────────────────────────────
+    // Steps 1 (context) and 2 (chunking) must run sequentially.
+    // The 5 analysis sections below are independent — call all at once.
+    const chunkSummaries = chunks.map((c, i) =>
+      `[Phần ${i + 1} - ${c.heading}]: ${c.content.slice(0, 200)}...`
+    ).join('\n');
 
-    for (const section of SECTIONS) {
-      if (section === 'context') continue; // already done
+    const analysisSections = SECTIONS.filter(s => s !== 'context'); // skip context — already done
 
-      try {
+    // Call all 5 sections simultaneously
+    const results = await Promise.allSettled(
+      analysisSections.map(async (section) => {
         const sectionPrompt = buildSectionPrompt(title, author, workContext, chunkSummaries, section);
-        const result = await aiCall('@cf/qwen/qwen2.5-coder-32b-instruct', {
+        const result = await aiCall('@cf/mistralai/mistral-small-3.1-24b-instruct', {
           systemPrompt: `Bạn là giáo viên ngữ văn Việt Nam chuyên nghiệp. Phân tích tác phẩm theo yêu cầu. Viết ngắn gọn, rõ ràng, phù hợp học sinh cấp 2 (lớp 6-9). Nếu không đủ thông tin, ghi rõ phần nào chưa rõ.`,
           messages: [{ role: 'user', content: sectionPrompt }],
           maxTokens: 800,
           temperature: 0.4,
         });
-        await upsertAnalysis(env, id, section, result.text.trim(), 1);
-      } catch (e) {
-        console.error(`Section "${section}" failed:`, e.message);
-        await upsertAnalysis(env, id, section, '[Lỗi khi phân tích phần này. Vui lòng nhập tay.]', 0);
+        return { section, content: result.text.trim(), inputTokens: result.inputTokens, outputTokens: result.outputTokens };
+      })
+    );
+
+    // Save results — accumulate tokens
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        totalInputTokens += result.value.inputTokens;
+        totalOutputTokens += result.value.outputTokens;
+        await upsertAnalysis(env, id, result.value.section, result.value.content, 1);
+      } else {
+        // Find which section failed by matching the promise reference
+        const failedSection = analysisSections[results.findIndex(r => r === result)];
+        console.error(`Section "${failedSection}" failed:`, result.reason?.message);
+        await upsertAnalysis(env, id, failedSection, '[Lỗi khi phân tích phần này. Vui lòng nhập tay.]', 0);
       }
     }
+
+    // Log total token usage for this entire analysis run
+    await logToken(env, user.id, 'work_analysis', `Phân tích tác phẩm: ${title}`, totalInputTokens, totalOutputTokens);
 
     // Mark done
     await env.DB.prepare("UPDATE works SET analysis_status = 'done' WHERE id = ?").bind(id).run();
