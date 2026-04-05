@@ -33,6 +33,26 @@ export function estimateMessagesTokens(messages) {
 }
 
 /**
+ * Load work_analysis as a keyed map { section -> content }.
+ * Returns an empty map on error (no throw).
+ * @param {import('@cloudflare/workers-types').D1Database} DB
+ * @param {string} workId
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function getWorkAnalysis(DB, workId) {
+  try {
+    const { results } = await DB.prepare(
+      `SELECT section, content FROM work_analysis WHERE work_id = ? ORDER BY section`
+    ).bind(workId).all();
+    const map = {};
+    for (const r of results) map[r.section] = r.content || '';
+    return map;
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
  * Extract JSON object from AI raw text response.
  * Falls back to the provided default if parsing fails.
  *

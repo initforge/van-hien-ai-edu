@@ -8,7 +8,7 @@
  */
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
-import { jsonError, parseAiJson, estimateTokens } from './_utils.js';
+import { jsonError, parseAiJson, estimateTokens, getWorkAnalysis } from './_utils.js';
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -25,16 +25,24 @@ export async function onRequestPost({ request, env, data }) {
       return jsonError('Thiếu tiêu đề đề thi.', 400);
     }
 
-    // ── Build AI prompt ──────────────────────────────────────────────────
+    // ── Build AI prompt from work_analysis ────────────────────────────────
     let passageContext = '';
     if (workId) {
       const work = await env.DB.prepare(
-        `SELECT title, author, content FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
+        `SELECT title, author FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
       ).bind(workId, user.id).first();
       if (work) {
-        passageContext =
-          `\n\nTác phẩm: "${work.title}" của ${work.author}.\n` +
-          `Nội dung:\n${(work.content || '').slice(0, 3000)}`;
+        const analysis = await getWorkAnalysis(env.DB, workId);
+        const parts = [
+          analysis.summary       && `Tóm tắt:\n${analysis.summary}`,
+          analysis.themes       && `Chủ đề:\n${analysis.themes}`,
+          analysis.characters   && `Nhân vật:\n${analysis.characters}`,
+          analysis.art_features && `Đặc sắc nghệ thuật:\n${analysis.art_features}`,
+          analysis.content_value && `Giá trị:\n${analysis.content_value}`,
+        ].filter(Boolean);
+        passageContext = parts.length
+          ? `\n\nTác phẩm "${work.title}" của ${work.author}:\n${parts.join('\n')}`
+          : '';
       }
     }
 

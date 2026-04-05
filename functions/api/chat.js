@@ -1,7 +1,7 @@
 import { checkRateLimit } from './_rateLimit.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { aiStream } from './_ai.js';
-import { jsonError, estimateTokens } from './_utils.js';
+import { jsonError, estimateTokens, getWorkAnalysis } from './_utils.js';
 
 // ─── System prompts by character ──────────────────────────────────────────────
 
@@ -11,8 +11,8 @@ import { jsonError, estimateTokens } from './_utils.js';
  */
 async function getCharacterPrompt(env, characterId, userId) {
   const row = await env.DB.prepare(
-    `SELECT c.system_prompt, c.personality, c.role, c.name,
-            w.title AS workTitle, w.author, w.content AS workContent
+    `SELECT c.system_prompt, c.personality, c.role, c.name, c.work_id,
+            w.title AS workTitle, w.author
      FROM characters c
      LEFT JOIN works w ON c.work_id = w.id
      WHERE c.name = ? AND c.active = 1`
@@ -26,9 +26,22 @@ async function getCharacterPrompt(env, characterId, userId) {
     };
   }
 
-  const workContext = row.workContent
-    ? `\n\nBối cảnh tác phẩm "${row.workTitle}" của ${row.author}:\n${row.workContent.slice(0, 2000)}`
-    : `\n\nTác phẩm liên quan: "${row.workTitle}" (${row.author}).`;
+  // Load structured work analysis
+  const analysis = row.work_id ? await getWorkAnalysis(env.DB, row.work_id) : {};
+  const summary  = analysis.summary  || '';
+  const chars    = analysis.characters || '';
+  const themes  = analysis.themes   || '';
+  const context = analysis.context   || '';
+
+  const workContext = row.workTitle
+    ? [
+        `\n\nTác phẩm: "${row.workTitle}" của ${row.author || '?'}`,
+        summary  && `Tóm tắt:\n${summary}`,
+        chars    && `Phân tích nhân vật trong tác phẩm:\n${chars}`,
+        themes   && `Chủ đề:\n${themes}`,
+        context  && `Bối cảnh:\n${context}`,
+      ].filter(Boolean).join('\n')
+    : '';
 
   const charContext = row.personality
     ? `\nTính cách: ${row.personality}`

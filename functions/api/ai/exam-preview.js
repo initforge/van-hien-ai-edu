@@ -7,7 +7,7 @@
  */
 import { aiCall } from '../_ai.js';
 import { kvSet } from '../_kv.js';
-import { jsonError, parseAiJson } from '../_utils.js';
+import { jsonError, parseAiJson, getWorkAnalysis } from '../_utils.js';
 import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'exam-preview:';
@@ -26,16 +26,29 @@ export async function onRequestPost({ request, env, data }) {
       return jsonError('Thiếu tiêu đề đề thi.', 400);
     }
 
-    // Build passage context from work
+    // Build passage context from work_analysis + work metadata
     let passageContext = '';
     if (workId) {
       const work = await env.DB.prepare(
-        `SELECT title, author, content FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
+        `SELECT title, author FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
       ).bind(workId, user.id).first();
       if (work) {
+        const analysis = await getWorkAnalysis(env.DB, workId);
+        const summary   = analysis.summary       || '';
+        const themes    = analysis.themes         || '';
+        const chars     = analysis.characters     || '';
+        const artFeat   = analysis.art_features  || '';
+        const ctxVal    = analysis.content_value  || '';
+        const context   = analysis.context       || '';
+
         passageContext =
-          `\n\nTác phẩm: "${work.title}" của ${work.author}.\n` +
-          `Nội dung:\n${(work.content || '').slice(0, 3000)}`;
+          `\n\nTác phẩm: "${work.title}" của ${work.author}.` +
+          (summary  ? `\nTóm tắt tác phẩm:\n${summary}` : '') +
+          (chars    ? `\nPhân tích nhân vật:\n${chars}` : '') +
+          (themes   ? `\nChủ đề và thông điệp:\n${themes}` : '') +
+          (artFeat  ? `\nĐặc sắc nghệ thuật:\n${artFeat}` : '') +
+          (ctxVal   ? `\nGiá trị nội dung:\n${ctxVal}` : '') +
+          (context  ? `\nBối cảnh:\n${context}` : '');
       }
     }
 

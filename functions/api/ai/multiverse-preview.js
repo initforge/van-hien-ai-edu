@@ -7,7 +7,7 @@
  */
 import { aiCall } from '../_ai.js';
 import { kvSet } from '../_kv.js';
-import { jsonError, parseAiJson } from '../_utils.js';
+import { jsonError, parseAiJson, getWorkAnalysis } from '../_utils.js';
 import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'multiverse-preview:';
@@ -24,17 +24,21 @@ export async function onRequestPost({ request, env, data }) {
       return jsonError('Thiếu workId hoặc branchPoint.', 400);
     }
 
-    // Load work
+    // Load work + analysis
     const work = await env.DB.prepare(
-      `SELECT id, title, author, content FROM works
+      `SELECT id, title, author FROM works
        WHERE id = ? AND analysis_status = 'done' LIMIT 1`
     ).bind(workId).first();
 
     if (!work) return jsonError('Không tìm thấy tác phẩm.', 404);
 
-    const passageContext = work.content
-      ? `\n\nToàn bộ tác phẩm "${work.title}" của ${work.author}:\n${work.content.slice(0, 4000)}`
-      : '';
+    const analysis = await getWorkAnalysis(env.DB, workId);
+    const passageContext =
+      `\n\nTác phẩm: "${work.title}" của ${work.author}.` +
+      (analysis.summary  ? `\nTóm tắt:\n${analysis.summary}` : '') +
+      (analysis.context ? `\nBối cảnh:\n${analysis.context}` : '') +
+      (analysis.themes  ? `\nChủ đề:\n${analysis.themes}` : '') +
+      (analysis.characters ? `\nNhân vật:\n${analysis.characters}` : '');
 
     const systemPrompt =
       `Bạn là nhà văn sáng tạo chuyên về văn học Việt Nam. ` +

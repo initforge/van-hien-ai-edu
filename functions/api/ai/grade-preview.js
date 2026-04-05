@@ -6,7 +6,7 @@
  */
 import { aiCall } from '../_ai.js';
 import { kvSet } from '../_kv.js';
-import { jsonError, parseAiJson } from '../_utils.js';
+import { jsonError, parseAiJson, getWorkAnalysis } from '../_utils.js';
 
 const KV_KEY_PREFIX = 'grade-preview:';
 
@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env, data }) {
     const submission = await env.DB.prepare(
       `SELECT s.id, s.exam_id AS examId, s.student_id AS studentId,
               e.title AS examTitle, e.work_id AS workId,
-              w.title AS workTitle, w.author, w.content AS passage
+              w.title AS workTitle, w.author
        FROM submissions s
        JOIN exams e ON s.exam_id = e.id
        LEFT JOIN works w ON e.work_id = w.id
@@ -56,9 +56,22 @@ export async function onRequestPost({ request, env, data }) {
 
     const answerMap = new Map(answersResult.results.map(a => [a.questionId, a.content || '']));
 
-    // Build grading prompt
-    const passageContext = submission.passage
-      ? `\n\nVăn bản tác phẩm "${submission.workTitle}" của ${submission.author}:\n${submission.passage.slice(0, 3000)}`
+    // Build passage context from work_analysis (structured analysis)
+    const passageContext = submission.workId
+      ? await (async () => {
+          const analysis = await getWorkAnalysis(env.DB, submission.workId);
+          const parts = [
+            analysis.summary       && `Tóm tắt:\n${analysis.summary}`,
+            analysis.characters    && `Phân tích nhân vật:\n${analysis.characters}`,
+            analysis.art_features && `Đặc sắc nghệ thuật:\n${analysis.art_features}`,
+            analysis.content_value && `Giá trị nội dung:\n${analysis.content_value}`,
+            analysis.context      && `Bối cảnh:\n${analysis.context}`,
+          ].filter(Boolean);
+          const header = submission.workTitle
+            ? `\n\nTác phẩm "${submission.workTitle}" của ${submission.author || '?'}:`
+            : '';
+          return header + (parts.length ? '\n' + parts.join('\n') : '');
+        })()
       : '';
 
     const questionsText = questionsResult.results.map((q, i) =>

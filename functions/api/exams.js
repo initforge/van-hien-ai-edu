@@ -85,6 +85,40 @@ export async function onRequestPost({ request, env, data }) {
       return cachedJson({ error: 'Thiếu tiêu đề đề thi.' }, { status: 400, profile: 'nocache' });
     }
 
+    // ── Mode: add questions to existing exam ───────────────────────────────
+    if (body.examId && body.questions) {
+      const exam = await env.DB.prepare(
+        "SELECT id FROM exams WHERE id = ? AND teacher_id = ? LIMIT 1"
+      ).bind(body.examId, user.id).first();
+      if (!exam) return cachedJson({ error: 'Không tìm thấy đề thi.' }, { status: 404, profile: 'nocache' });
+
+      const questions = Array.isArray(body.questions) ? body.questions : [];
+      if (!questions.length) return cachedJson({ error: 'Không có câu hỏi.' }, { status: 400, profile: 'nocache' });
+
+      const existing = await env.DB.prepare(
+        "SELECT MAX(order_index) AS maxIdx FROM questions WHERE exam_id = ?"
+      ).bind(body.examId).first();
+      let order = (existing?.maxIdx ?? 0);
+
+      for (const q of questions) {
+        order++;
+        await env.DB.prepare(
+          `INSERT INTO questions (id, exam_id, content, type, points, rubric, order_index)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(),
+          body.examId,
+          String(q.content || '').slice(0, 500),
+          String(q.type || 'essay'),
+          Math.max(1, Math.min(10, Number(q.points) || 2)),
+          String(q.rubric || '').slice(0, 500),
+          order
+        ).run();
+      }
+      return cachedJson({ success: true, added: questions.length }, { status: 201, profile: 'nocache' });
+    }
+
+    // ── Mode: create new exam (standalone) ──────────────────────────────────
     // Validate type enum
     const validTypes = ['exercise', 'exam'];
     if (body.type != null && !validTypes.includes(body.type)) {
