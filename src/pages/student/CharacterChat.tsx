@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import useSWR from "swr";
 import { fetcher } from "../../lib/fetcher";
 import type { Character } from "../../types/api";
@@ -15,6 +15,7 @@ export default function CharacterChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [threadId, setThreadId] = useState<string | null>(null);
+  const messagesRef = useRef<Message[]>([]);
 
   const { data: charactersData, isLoading } = useSWR("/api/characters", fetcher);
   const characters: Character[] = (charactersData?.data ?? []) as Character[];
@@ -77,18 +78,21 @@ export default function CharacterChatPage() {
   };
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || !selectedChar) return;
     const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
-    const newMsg: Message = { role: "user", text: input, time };
-    const currentMessages = [...messages, newMsg];
-    setMessages((prev) => [...prev, newMsg, { role: "ai", text: "", time }]);
+    const userMsg: Message = { role: "user", text: input.trim(), time };
+    const aiMsg: Message = { message: "ai", text: "", time } as Message;
+    setMessages(prev => {
+      messagesRef.current = [...prev, userMsg, aiMsg];
+      return messagesRef.current;
+    });
     setInput("");
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: currentMessages, characterId: selectedChar, threadId }),
+        body: JSON.stringify({ messages: [...messages, userMsg], characterId: selectedChar, threadId }),
       });
       if (!res.body) throw new Error("No response body");
       const reader = res.body.getReader();
@@ -99,17 +103,25 @@ export default function CharacterChatPage() {
         done = d;
         if (value) {
           const chunk = decoder.decode(value, { stream: true });
-          setMessages((prev) => {
-            const msgs = [...prev];
-            msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: msgs[msgs.length - 1].text + chunk };
+          setMessages(prev => {
+            const base = prev.length > 0 ? prev : messagesRef.current;
+            const msgs = [...base];
+            if (msgs.length > 0) {
+              msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: msgs[msgs.length - 1].text + chunk };
+            }
+            messagesRef.current = msgs;
             return msgs;
           });
         }
       }
     } catch {
-      setMessages((prev) => {
-        const msgs = [...prev];
-        msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: "(Lỗi: Không nhận được phản hồi. Vui lòng thử lại.)" };
+      setMessages(prev => {
+        const base = prev.length > 0 ? prev : messagesRef.current;
+        const msgs = [...base];
+        if (msgs.length > 0) {
+          msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: "(Lỗi: Không nhận được phản hồi. Vui lòng thử lại.)" };
+        }
+        messagesRef.current = msgs;
         return msgs;
       });
     }
@@ -219,7 +231,7 @@ export default function CharacterChatPage() {
             </div>
           </div>
           <button
-            onClick={() => { setMessages([]); setThreadId(null); }}
+            onClick={() => { setMessages([]); messagesRef.current = []; setThreadId(null); }}
             className="flex items-center gap-2 px-4 py-2 border border-outline-variant/30 bg-white text-primary-container rounded-lg text-sm font-bold hover:bg-primary-container/5 transition-all shadow-sm"
           >
             <span className="material-symbols-outlined text-sm">add</span>

@@ -9,7 +9,7 @@ import { jsonError, estimateTokens, getWorkAnalysis } from './_utils.js';
  * Build system prompt for a given character.
  * Returns the character's system_prompt from DB, or a default.
  */
-async function getCharacterPrompt(env, characterId, userId) {
+async function getCharacterPrompt(env, characterId) {
   const row = await env.DB.prepare(
     `SELECT c.system_prompt, c.personality, c.role, c.name, c.work_id,
             w.title AS workTitle, w.author
@@ -28,18 +28,22 @@ async function getCharacterPrompt(env, characterId, userId) {
 
   // Load structured work analysis
   const analysis = row.work_id ? await getWorkAnalysis(env.DB, row.work_id) : {};
-  const summary  = analysis.summary  || '';
-  const chars    = analysis.characters || '';
-  const themes  = analysis.themes   || '';
-  const context = analysis.context   || '';
+  const summary    = analysis.summary     || '';
+  const chars      = analysis.characters  || '';
+  const themes     = analysis.themes      || '';
+  const context    = analysis.context     || '';
+  const artFeatures = analysis.art_features || '';
+  const contentValue = analysis.content_value || '';
 
   const workContext = row.workTitle
     ? [
         `\n\nTác phẩm: "${row.workTitle}" của ${row.author || '?'}`,
-        summary  && `Tóm tắt:\n${summary}`,
-        chars    && `Phân tích nhân vật trong tác phẩm:\n${chars}`,
-        themes   && `Chủ đề:\n${themes}`,
-        context  && `Bối cảnh:\n${context}`,
+        summary       && `Tóm tắt:\n${summary}`,
+        chars         && `Phân tích nhân vật trong tác phẩm:\n${chars}`,
+        themes        && `Chủ đề:\n${themes}`,
+        artFeatures   && `Đặc sắc nghệ thuật:\n${artFeatures}`,
+        contentValue  && `Giá trị nội dung:\n${contentValue}`,
+        context       && `Bối cảnh:\n${context}`,
       ].filter(Boolean).join('\n')
     : '';
 
@@ -47,13 +51,16 @@ async function getCharacterPrompt(env, characterId, userId) {
     ? `\nTính cách: ${row.personality}`
     : '';
 
+  // If DB has explicit system_prompt, use it; otherwise auto-generate
+  const autoPrompt =
+    `Bạn là nhân vật "${row.name}" trong văn học Việt Nam.` +
+    `${charContext}` +
+    `${workContext}` +
+    `\n\nHãy hóa thân hoàn toàn vào nhân vật, trả lời bằng tiếng Việt, giữ đúng giọng điệu và tính cách. ` +
+    `Không tiết lộ rằng bạn là AI. Nếu câu hỏi ngoài phạm vi tác phẩm, hãy trả lời một cách tự nhiên như nhân vật đó.`;
+
   return {
-    prompt:
-      `Bạn là nhân vật "${row.name}" trong văn học Việt Nam.` +
-      `${charContext}` +
-      `${workContext}` +
-      `\n\nHãy hóa thân hoàn toàn vào nhân vật, trả lời bằng tiếng Việt, giữ đúng giọng điệu và tính cách. ` +
-      `Không tiết lộ rằng bạn là AI. Nếu câu hỏi ngoài phạm vi tác phẩm, hãy trả lời một cách tự nhiên như nhân vật đó.`,
+    prompt: row.system_prompt?.trim() ? row.system_prompt : autoPrompt,
     workTitle: row.workTitle || '',
     author: row.author || '',
   };
@@ -120,7 +127,7 @@ export async function onRequestPost({ request, data, env }) {
     ).bind(crypto.randomUUID(), threadIdToUse, lastUserMessage, now).run();
 
     // ── Build AI messages ───────────────────────────────────────────────────
-    const charPrompt = await getCharacterPrompt(env, characterId, user.id);
+    const charPrompt = await getCharacterPrompt(env, characterId);
 
     // Truncate old messages to keep context window manageable (last 10 turns)
     const recentMessages = messages.slice(-10).map(m => ({

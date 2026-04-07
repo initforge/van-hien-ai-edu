@@ -40,6 +40,23 @@ export async function onRequestPost({ request, env, data }) {
     ).bind(submission.examId, user.id).first();
     if (!examOwner) return jsonError('Không có quyền chấm bài này.', 403);
 
+    // Load rubric criteria from DB
+    const rubricRows = await env.DB.prepare(
+      `SELECT name, description, weight, hint_prompt AS hintPrompt
+       FROM rubric_criteria
+       WHERE teacher_id = ? AND is_active = 1
+       ORDER BY order_index ASC`
+    ).bind(user.id).all();
+
+    const criteria = rubricRows.results?.length
+      ? rubricRows.results
+      : [
+          { name: 'Nội dung', description: 'Phân tích đúng yêu cầu đề bài', weight: 40, hintPrompt: '' },
+          { name: 'Lập luận', description: 'Sự logic và thuyết phục', weight: 25, hintPrompt: '' },
+          { name: 'Diễn đạt', description: 'Từ vựng, ngữ pháp linh hoạt', weight: 20, hintPrompt: '' },
+          { name: 'Hình thức', description: 'Trình bày, lỗi chính tả', weight: 15, hintPrompt: '' },
+        ];
+
     // Load questions and answers
     const [questionsResult, answersResult] = await Promise.all([
       env.DB.prepare(
@@ -78,14 +95,19 @@ export async function onRequestPost({ request, env, data }) {
       `Câu ${i + 1} (${q.points} điểm, ${q.type}):\n${q.content}\nCâu trả lời: ${answerMap.get(q.id) || '(trống)'}`
     ).join('\n\n');
 
+    const criteriaText = criteria.map((c, i) =>
+      `Tiêu chí ${i + 1}: ${c.name} (${c.weight}%)${c.description ? ` — ${c.description}` : ''}${c.hintPrompt ? ` | Gợi ý: ${c.hintPrompt}` : ''}`
+    ).join('\n');
+
     const systemPrompt =
       `Bạn là một giáo viên ngữ văn giàu kinh nghiệm. ` +
       `Nhiệm vụ: CHẤM BÀI bài tập làm văn của học sinh theo rubric cho sẵn.` +
       `${passageContext}` +
-      `\n\nHãy chấm từng câu theo rubric, rồi trả lời theo định dạng JSON sau (KHÔNG thêm text khác ngoài JSON):` +
-      `\n\n{\n  "scores": [\n    { "questionId": "...", "points": 0-10, "comment": "nhận xét ngắn" },\n    ...\n  ],\n  "totalScore": 0-10,\n  "summary": "nhận xét tổng quát 2-3 câu"\n}` +
-      `\n\nQuy tắc: điểm trên thang 10, cho điểm tổng = (điểm_đạt / tổng_điểm) × 10.` +
-      `\nChỉ trả JSON, không giải thích thêm.`;
+      `\n\nRubric chấm điểm (tổng 10 điểm):\n${criteriaText}` +
+      `\n\nBài làm của học sinh:\n${questionsText}` +
+      `\n\nHãy chấm từng tiêu chí theo rubric, rồi trả lời JSON (KHÔNG thêm text khác):` +
+      `\n\n{\n  "rubricScores": [\n    { "name": "Nội dung", "points": 0-10, "comment": "nhận xét ngắn gọn" },\n    ...\n  ],\n  "totalScore": 0-10,\n  "summary": "nhận xét tổng quát 2-3 câu"\n}` +
+      `\n\nQuy tắc: điểm trên thang 10, chỉ trả JSON.`;
 
     const { text: aiResponse } = await aiCall(
       '@cf/google/gemma-3-12b-it',
@@ -93,7 +115,13 @@ export async function onRequestPost({ request, env, data }) {
     );
 
     const { parsed } = parseAiJson(aiResponse, null);
-    const grading = /** @type {{ totalScore?: number, summary?: string, scores?: any[] }} */ (parsed || {});
+    const grading = /** @type {{ totalScore?: number, summary?: string, rubricScores?: any[] }} */ (parsed || {});
+
+    const rubricScores = (grading.rubricScores || []).map(s => ({
+      name: String(s.name || ''),
+      points: Math.max(0, Math.min(10, parseFloat(s.points ?? s.point ?? 0))),
+      comment: String(s.comment || ''),
+    }));
 
     const totalScore = grading.totalScore !== null && grading.totalScore !== undefined
       ? Number(grading.totalScore.toFixed(1))
@@ -101,7 +129,7 @@ export async function onRequestPost({ request, env, data }) {
 
     const payload = {
       submissionId,
-      scores: grading.scores || [],
+      rubricScores,
       totalScore,
       summary: grading.summary || '',
       raw: aiResponse.slice(0, 500),
@@ -113,7 +141,7 @@ export async function onRequestPost({ request, env, data }) {
 
     return new Response(JSON.stringify({
       submissionId,
-      scores: grading.scores || [],
+      rubricScores,
       totalScore,
       summary: grading.summary || '',
     }), {

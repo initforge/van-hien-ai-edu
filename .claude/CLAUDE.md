@@ -87,15 +87,15 @@ D1 (prod):  npx wrangler d1 create vanhien-db --env production
 | 9 | ExamDetail.tsx | Empty catch + missing useSWR import | P1 | **FIXED** |
 | 10 | works.js:79 | Always evaluates 'pending' (status never 'none') | P0 | **FIXED** |
 | 11 | teacher/stats-ai.js:74 | Wrong property `r.outputTokens` (should be `r.totalOutput`) | P1 | **FIXED** |
-| 12 | multiverse.js:144 | JSON.parse without try/catch | P1 | **FIXED** |
+| 12 | multiverse.js:134–176 | ai_full no try/catch → silent failure saves empty draft; parent.content not checked; manual=published/AI=draft inconsistency | P0 | **FIXED** — dedicated try/catch per method, empty-content guard, status always 'published' |
 | 13 | admin/classes.js | Orphaned submissions/questions on class delete | P1 | **FIXED** |
 | 14 | activity.js | 4 syntax errors (missing `)`, comma) — would crash runtime | P0 | **FIXED** |
 | 15 | warnings.js | 3 syntax errors (missing `)`, wrong table name `ai_wwords`) | P0 | **FIXED** |
 | 16 | works/[id]/*.js | Wrong import paths (`../../../api/_cache.js` → `../../_cache.js`) | P0 | **FIXED** |
-| 17 | 03-works.sql, characters.js, chat.js, ai-multiverse.js | `works.status` redundant with `analysis_status` — students permanently locked from characters/chat/multiverse | P0 | **FIXED** — dropped `status` column; all AI gates now use `analysis_status = 'done'` |
+| 17 | 03-works.sql, characters.js, chat.js | `works.status` redundant with `analysis_status` | P0 | **FIXED** — dropped `status` column; ai-multiverse.js deleted (broken) |
 | 18 | Grading.tsx | Fetches ALL submissions/exams then filters client-side — should send `classId`/`examId` to API | P1 | **FIXED** — wired to `?examId=` on submissions.js and `?classId=` on exams.js |
 | 19 | ExamBank.tsx | Class dropdown only filters client-side — should send `?classId=` to API | P1 | **FIXED** — wired to `/api/exams?classId=` |
-| 20 | TeacherMultiverse.tsx | Fetches `/api/storylines` without teacher_id filter — may show other teachers' data | P1 | **FIXED** — now uses `/api/teacher/storylines` with teacher ownership |
+| 20 | TeacherMultiverse.tsx | Wrong endpoint + had creation UI (teacher should only watch student multiverse) | P1 | **FIXED** — rewritten to GET /api/multiverse, grouped by student, class/work/student filters, detail modal with sibling comparison |
 | 21 | AIReview.tsx | `student_stats` tab shows all classes mixed — no class filter | P1 | **FIXED** — stats-ai.js now accepts `?classId=`; AIReview.tsx has class selector UI |
 | 22 | Characters.tsx | "Lịch sử chat HS" tab calls `/api/chat` (student_id filter) — always empty for teachers | P1 | **FIXED** — now uses `/api/teacher/chat-threads` (teacher_id scoped) |
 | 23 | submissions.js | Missing `examId`/`classId` query params — Grading couldn't filter | P1 | **FIXED** — added optional `WHERE` clauses |
@@ -105,6 +105,8 @@ D1 (prod):  npx wrangler d1 create vanhien-db --env production
 | 27 | ExamBank.tsx | Form bài tập/đề thi giống hệt nhau — không phản ánh bản chất khác nhau | P2 | **FIXED** — thêm mode "Nhập tay" với ExamManualForm; tách rõ: đề thi bắt buộc lớp + thời lượng (border đỏ); thêm `examId`+`questions` mode vào exams.js POST; button toggle AI/nhập tay |
 | 28 | Library.tsx AddWorkModal | Không gợi ý phân tích AI khi content đủ dài | P3 | **FIXED** — thêm `aiSuggestReady` state với debounce 3s, banner "Sẵn sàng phân tích AI!" khi ≥200 từ + title/author đủ; `onAnalyze` callback auto-chọn work sau khi tạo |
 | 29 | Library.tsx WorkDetailPanel | Không có polling sau analyze — teacher thấy trống | P2 | **FIXED** — sau POST thành công, polling 5s revalidate analysis cho đến khi ≥6 sections hoặc timeout 5min; indicator "Đang phân tích..." / "Phân tích hoàn tất!" |
+| 30 | grade-preview.js | AI prompt không có rubric criteria — chấm vô nghĩa | P0 | **FIXED** — load rubric_criteria từ DB, pass vào AI prompt, return rubricScores by name |
+| 31 | Grading.tsx | Map AI scores by array index (sai semantic); không hiển thị comment theo từng tiêu chí | P1 | **FIXED** — map by name match, hiển thị aiComment bên dưới điểm AI |
 
 ## Recent Changes
 

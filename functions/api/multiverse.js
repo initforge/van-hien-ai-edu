@@ -132,47 +132,80 @@ export async function onRequestPost({ request, env, data }) {
     let generatedMoral = '';
 
     if (generationMethod === 'ai_full') {
-      const { text, inputTokens, outputTokens } = await aiCall(
-        '@cf/qwen/qwen3-30b-a3b-fp8',
-        {
-          systemPrompt: `Bạn là nhà văn Việt Nam chuyên viết truyện ngắn. Viết một đoạn truyện ngắn sáng tạo dựa trên gợi ý "WHAT IF" cho tác phẩm "${work.title}" của ${work.author}. Đoạn truyện phải: (1) giữ đúng tinh thần tác phẩm gốc, (2) có kết cục mới hấp dẫn, (3) dài 200-400 từ. Trả lời JSON: {"content": "...đoạn truyện...", "moral": "...bài học rút ra..."}`,
-          messages: [{ role: 'user', content: `WHAT IF: ${branchPoint}` }],
-          maxTokens: 1024,
-          temperature: 0.85,
-        }
-      );
-      let parsed = null;
+      let rawText = '';
       try {
-        parsed = JSON.parse(text.replace(/^[\s\S]*?\{/, '{').replace(/\}[\s\S]*$/, '}'));
-      } catch { /* use raw text fallback */ }
-      generatedContent = parsed?.content || text.slice(0, 2000);
-      generatedMoral = parsed.moral || '';
-      await logTokenUsage(env, user.id, 'multiverse', `Tạo đa vũ trụ: ${branchPoint}`, inputTokens, outputTokens);
+        const result = await aiCall(
+          '@cf/qwen/qwen3-30b-a3b-fp8',
+          {
+            systemPrompt: `Bạn là nhà văn Việt Nam chuyên viết truyện ngắn. Viết một đoạn truyện ngắn sáng tạo dựa trên gợi ý "WHAT IF" cho tác phẩm "${work.title}" của ${work.author}. Đoạn truyện phải: (1) giữ đúng tinh thần tác phẩm gốc, (2) có kết cục mới hấp dẫn, (3) dài 200-400 từ. Trả lời JSON: {"content": "...đoạn truyện...", "moral": "...bài học rút ra..."}`,
+            messages: [{ role: 'user', content: `WHAT IF: ${branchPoint}` }],
+            maxTokens: 1024,
+            temperature: 0.85,
+          }
+        );
+        rawText = result.text || '';
+        if (rawText.trim()) {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rawText.replace(/^[\s\S]*?\{/, '{').replace(/\}[\s\S]*$/, '}'));
+          } catch { /* use raw text fallback */ }
+          generatedContent = parsed?.content || rawText.slice(0, 2000);
+          generatedMoral = parsed?.moral || '';
+        } else {
+          return jsonError('AI không trả về nội dung. Vui lòng thử lại.', 500);
+        }
+        await logTokenUsage(env, user.id, 'multiverse', `Tạo đa vũ trụ: ${branchPoint}`, result.inputTokens, result.outputTokens);
+      } catch (aiError) {
+        console.error('AI multiverse generation error:', aiError);
+        return jsonError('Lỗi khi tạo nội dung đa vũ trụ. Vui lòng thử lại.', 500);
+      }
     } else if (generationMethod === 'ai_branch') {
       if (!parentId) return jsonError('Thiếu parentId cho nhánh mới.', 400);
       const parent = await env.DB.prepare(
         "SELECT content, work_id FROM student_multiverse WHERE id = ? LIMIT 1"
       ).bind(parentId).first();
       if (!parent) return jsonError('Không tìm thấy nhánh cha.', 404);
+      if (!parent.content?.trim()) {
+        return jsonError('Nhánh cha chưa có nội dung. Không thể tạo nhánh tiếp.', 400);
+      }
 
-      const { text, inputTokens, outputTokens } = await aiCall(
-        '@cf/qwen/qwen3-30b-a3b-fp8',
-        {
-          systemPrompt: `Bạn là nhà văn Việt Nam. Viết tiếp một đoạn truyện dựa trên nội dung đã cho, theo hướng WHAT IF mới. Giữ đúng giọng văn và phong cách. Trả lời JSON: {"content": "...tiếp theo...", "moral": "...bài học..."}`,
-          messages: [{ role: 'user', content: `Nội dung trước:\n${(parent.content || '').slice(0, 1500)}\n\nWHAT IF mới: ${branchPoint}` }],
-          maxTokens: 768,
-          temperature: 0.85,
+      let rawText = '';
+      try {
+        const result = await aiCall(
+          '@cf/qwen/qwen3-30b-a3b-fp8',
+          {
+            systemPrompt: `Bạn là nhà văn Việt Nam. Viết tiếp một đoạn truyện dựa trên nội dung đã cho, theo hướng WHAT IF mới. Giữ đúng giọng văn và phong cách. Trả lời JSON: {"content": "...tiếp theo...", "moral": "...bài học..."}`,
+            messages: [{ role: 'user', content: `Nội dung trước:\n${(parent.content || '').slice(0, 1500)}\n\nWHAT IF mới: ${branchPoint}` }],
+            maxTokens: 768,
+            temperature: 0.85,
+          }
+        );
+        rawText = result.text || '';
+        if (rawText.trim()) {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rawText.replace(/^[\s\S]*?\{/, '{').replace(/\}[\s\S]*$/, '}'));
+          } catch { /* use raw text fallback */ }
+          generatedContent = parsed?.content || rawText.slice(0, 1500);
+          generatedMoral = parsed?.moral || '';
+        } else {
+          return jsonError('AI không trả về nội dung. Vui lòng thử lại.', 500);
         }
-      );
-      const parsed = JSON.parse(text.replace(/^[\s\S]*?\{/, '{').replace(/\}[\s\S]*$/, '}'));
-      generatedContent = parsed.content || text.slice(0, 1500);
-      generatedMoral = parsed.moral || '';
-      await logTokenUsage(env, user.id, 'multiverse', `Nhánh đa vũ trụ: ${branchPoint}`, inputTokens, outputTokens);
+        await logTokenUsage(env, user.id, 'multiverse', `Nhánh đa vũ trụ: ${branchPoint}`, result.inputTokens, result.outputTokens);
+      } catch (aiError) {
+        console.error('AI branch generation error:', aiError);
+        return jsonError('Lỗi khi tạo nhánh tiếp. Vui lòng thử lại.', 500);
+      }
+    }
+
+    // Never save empty content
+    if (!generatedContent.trim()) {
+      return jsonError('Không thể tạo nội dung. Vui lòng thử lại.', 500);
     }
 
     await env.DB.prepare(
       `INSERT INTO student_multiverse (id, student_id, work_id, class_id, title, branch_point, content, moral, status, generation_method, parent_id, depth, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)`
     ).bind(id, user.id, workId, classId, title || null, branchPoint.trim(), generatedContent, generatedMoral, generationMethod, parentId || null, depth, now, now).run();
 
     return new Response(JSON.stringify({

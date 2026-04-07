@@ -1,41 +1,50 @@
-# Continue Fix — TẤT CẢ ĐÃ XONG (2026-04-05)
+# Continue Fix — CÒN 1 TASK (2026-04-07)
 
-## ✅ Mọi thứ đã hoàn thành
+## ✅ Đã hoàn thành (session trước)
 
 | # | Item | Priority | Trạng thái |
 |---|---|---|---|
-| 1 | AI stub → throw error | P1 | ✅ Đã fix (session 3) |
-| 2 | work_analysis refactor (6 files) | P0 | ✅ Đã fix (session 4) |
-| 3 | Bỏ tab Chunks | P1 | ✅ Đã fix (session 4) |
-| 4a | analyze.js error handling | P1 | ✅ Đã fix (session 3) |
-| 4b | Library.tsx polling | P2 | ✅ Đã fix (session 5) |
-| 5 | ExamBank form tách + nhập tay | P2 | ✅ Đã fix (session 5) |
-| 6 | AI analysis tự động gợi ý | P3 | ✅ Đã fix (session 5) |
-| 7 | Đổi model AI | — | ✅ Đã fix (session 3) |
-| 8 | Auth race condition | — | ✅ Đã fix (session 3) |
-| 9 | ExamBank optimistic updates | — | ✅ Đã fix (session 3) |
+| A1 | multiverse.js — try/catch ai_full, validate parent.content, guard empty content | P0 | ✅ DONE |
+| A4 | TeacherMultiverse.tsx — viết lại: GET /api/multiverse, bỏ UI tạo, class/student filter | P0 | ✅ DONE |
+| B1 | grade-preview.js — load rubric_criteria từ DB, pass vào AI prompt | P0 | ✅ DONE |
+| B2 | Grading.tsx — map AI scores by name (semantic match), hiển thị aiComment | P1 | ✅ DONE |
+| P4 | Cleanup 7 dead files (storylines.js, ai-multiverse.js, teacher/storylines.js, multiverse-preview/approve/reject, constants/storylines.ts) | P2 | ✅ DONE |
 
-## Chi tiết từng fix
+## ❌ Còn lại — P3: Results.tsx rubric breakdown cho học sinh
 
-### work_analysis refactor (session 4)
-- `getWorkAnalysis()` thêm vào `_utils.js`
-- 6 consumer files giờ dùng structured analysis: exam-preview, grade-preview, multiverse-preview, ai-multiverse, chat, ai-exam-gen
-- Token tiết kiệm rất lớn (thay raw text bằng structured output)
+**Task:** Khi student xem kết quả bài → hiển thị rubric breakdown (điểm + comment theo từng tiêu chí)
 
-### ExamBank nâng cao (session 5)
-- Mode nhập tay: `ExamManualForm` component, toggle AI / Nhập tay
-- Form đề thi: lớp + thời lượng bắt buộc (border đỏ)
-- Form bài tập: tất cả tùy chọn
-- `exams.js` POST thêm mode `examId + questions` để thêm câu hỏi
+### Phân tích từ session bị interrupted
 
-### Library.tsx (session 5)
-- Polling: sau analyze POST, interval 5s revalidate cho đến khi xong
-- Indicator: "AI đang phân tích..." / "Phân tích hoàn tất!"
-- AddWorkModal: banner "Sẵn sàng phân tích AI!" khi ≥200 từ + title/author đủ
-- onAnalyze callback: auto-mở panel tác phẩm sau khi tạo
+**Vấn đề hiện tại:**
+- Results.tsx chỉ hiển thị điểm tổng + comment chung
+- Không có rubric breakdown cho student
+- `submissions` table KHÔNG có column lưu rubric breakdown
+- KV grade-preview hết hạn sau 30 phút → không dùng được
 
-## Deploy
+**Kế hoạch đã brainstorm:**
 
-- Frontend: `npx wrangler pages deploy dist/`
-- Backend: auto-deploy qua Cloudflare Pages Git integration
-- Build clean: ✅ (97 modules)
+1. **Schema:** Thêm column `ai_rubric TEXT` vào bảng `submissions` (lưu JSON)
+2. **Backend:** `submissions.js` PATCH → accept + save `ai_rubric` field
+3. **Grading.tsx:** Khi teacher "Trả bài" (`handleReturn`) → gửi kèm `rubricScores` JSON
+4. **submissions.js GET:** Trả về thêm `ai_rubric` cho student
+5. **Results.tsx:** Parse `ai_rubric` JSON → hiển thị breakdown:
+   ```
+   [████████░░] Nội dung 40% — 8/10 — "Phân tích đúng yêu cầu..."
+   [██████░░░░] Lập luận 25% — 6/10 — "Logic chưa rời rạc..."
+   ```
+
+### Files cần sửa
+
+| File | Thay đổi |
+|------|----------|
+| `database/schema/05-exams.sql` | Thêm `ai_rubric TEXT` vào `submissions` |
+| `functions/api/submissions.js` | PATCH: accept + save ai_rubric; GET: return ai_rubric |
+| `src/pages/teacher/Grading.tsx` | handleReturn: gửi kèm rubricScores |
+| `src/pages/student/Results.tsx` | Parse + hiển thị rubric breakdown |
+| Remote D1 | `ALTER TABLE submissions ADD COLUMN ai_rubric TEXT;` |
+
+### Session info
+- Session ID: `af92a249-dedd-4cb4-9a29-988310eb20a7`
+- Interrupted tại: đang đọc submissions.js để implement
+- Thời điểm: 2026-04-07 ~11:31 UTC

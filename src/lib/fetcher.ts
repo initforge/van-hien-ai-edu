@@ -44,3 +44,20 @@ export const SWR_OPTS = { revalidateOnFocus: false };
 
 /** SWR options for pages needing fresh data on focus (e.g. exam timer) */
 export const SWR_OPTS_REALTIME = { revalidateOnFocus: true, revalidateOnReconnect: true };
+
+/**
+ * Authenticated fetch wrapper — calls fetch() with JWT Bearer token.
+ * Usage: authFetch('/api/exams', { method: 'POST', ... })
+ * Does NOT throw on non-OK status; caller checks res.ok.
+ */
+export async function authFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...init, headers });
+}

@@ -1,13 +1,15 @@
 export type RubricRow = {
   name: string;
   desc: string;
+  weight: number;
   ai: string;
+  aiComment: string;
   gvRef: string;
 };
 
 export const RUBRIC_DEFAULT: RubricRow[] = [
-  { name: 'Nội dung (40%)', desc: 'Phân tích đúng yêu cầu đề bài', ai: '7.5', gvRef: '7.5' },
-  { name: 'Lập luận (25%)', desc: 'Sự logic và thuyết phục', ai: '6.0', gvRef: '6.5' },
-  { name: 'Diễn đạt (20%)', desc: 'Từ vựng, ngữ pháp linh hoạt', ai: '8.0', gvRef: '8.0' },
-  { name: 'Hình thức (15%)', desc: 'Trình bày, lỗi chính tả', ai: '9.0', gvRef: '9.0' },
+  { name: 'Nội dung', desc: 'Phân tích đúng yêu cầu đề bài', weight: 40, ai: '', gvRef: '' },
+  { name: 'Lập luận', desc: 'Sự logic và thuyết phục', weight: 25, ai: '', gvRef: '' },
+  { name: 'Diễn đạt', desc: 'Từ vựng, ngữ pháp linh hoạt', weight: 20, ai: '', gvRef: '' },
+  { name: 'Hình thức', desc: 'Trình bày, lỗi chính tả', weight: 15, ai: '', gvRef: '' },
 ];

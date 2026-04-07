@@ -39,16 +39,15 @@ export default function StudentResultsPage() {
           >Bài thi</button>
         </div>
         <div className="relative">
-          <button className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-all shadow-sm">
-            <span className="text-sm font-medium text-on-surface">Tác phẩm: Tất cả</span>
-            <span className="material-symbols-outlined text-outline text-xl">expand_more</span>
+          <button className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-xl border border-outline-variant/30 text-sm font-medium text-on-surface shadow-sm">
+            <span className="material-symbols-outlined text-outline text-lg">auto_awesome</span>
+            <span>Tác phẩm: Tất cả</span>
           </button>
         </div>
         <div className="relative">
-          <button className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-all shadow-sm">
+          <button className="flex items-center gap-3 px-5 py-2.5 bg-white rounded-xl border border-outline-variant/30 text-sm font-medium text-on-surface shadow-sm">
             <span className="material-symbols-outlined text-outline text-lg">calendar_today</span>
-            <span className="text-sm font-medium text-on-surface">Khoảng thời gian</span>
-            <span className="material-symbols-outlined text-outline text-xl">expand_more</span>
+            <span>Tất cả thời gian</span>
           </button>
         </div>
         <span className="text-xs text-slate-500 ml-auto">{filtered.length} kết quả</span>
@@ -61,8 +60,9 @@ export default function StudentResultsPage() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-10 text-on-surface-variant font-medium">Chưa có kết quả nào.</div>
         ) : filtered.map((r, i) => {
-          const aiScore = r.aiScore ?? 0;
-          const teacherScore = r.teacherScore ?? 0;
+          const aiScore = r.aiScore;
+          const teacherScore = r.teacherScore;
+          const displayScore = teacherScore ?? aiScore;
           const title = r.title || "Không có tiêu đề";
           const type = r.type || "exercise";
           const submittedAt = formatDate(r.submittedAt);
@@ -77,7 +77,7 @@ export default function StudentResultsPage() {
             <div className="p-6 flex items-center justify-between">
               <div className="flex items-center gap-5">
                 <div className={`w-14 h-14 rounded-full border-[3px] flex items-center justify-center font-bold text-xl ${type === "exam" ? "border-tertiary/30 text-tertiary" : "border-secondary/30 text-secondary"}`}>
-                  {teacherScore > 0 ? teacherScore : aiScore}
+                  {displayScore != null ? displayScore.toFixed(1) : '?'}
                 </div>
                 <div>
                   <h4 className="font-headline font-bold text-on-surface text-lg">{title}</h4>
@@ -103,7 +103,7 @@ export default function StudentResultsPage() {
                     <div className="flex items-center gap-2 mb-6">
                       <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                       <h5 className="font-headline font-bold text-primary">Đánh giá AI</h5>
-                      <span className="ml-auto text-2xl font-bold text-secondary">{aiScore}</span>
+                      <span className="ml-auto text-2xl font-bold text-secondary">{aiScore != null ? aiScore.toFixed(1) : '—'}</span>
                     </div>
                     <div className="bg-white p-4 rounded-xl border border-outline-variant/20 text-sm italic text-slate-600 font-headline leading-relaxed">
                       {"—"}
@@ -115,7 +115,7 @@ export default function StudentResultsPage() {
                     <div className="flex items-center gap-2 mb-6">
                       <span className="material-symbols-outlined text-tertiary" style={{ fontVariationSettings: "'FILL' 1" }}>history_edu</span>
                       <h5 className="font-headline font-bold text-primary">Đánh giá Giáo viên</h5>
-                      <span className="ml-auto text-2xl font-bold text-primary">{teacherScore}</span>
+                      <span className="ml-auto text-2xl font-bold text-primary">{teacherScore != null ? teacherScore.toFixed(1) : '—'}</span>
                     </div>
                     <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 text-sm italic text-slate-700 font-headline leading-relaxed">
                       {r.teacherComment || "Chưa có nhận xét."}

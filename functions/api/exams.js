@@ -20,6 +20,28 @@ export async function onRequestGet({ env, data, request }) {
     const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
     const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
     const classId = url.searchParams.get('classId');
+    const examId  = url.searchParams.get('examId');
+
+    // Single exam → return questions (Xem button)
+    if (examId) {
+      const exam = await env.DB.prepare(
+        `SELECT e.id, e.title, e.type, e.work_id AS workId, w.title AS workTitle,
+                e.class_id AS classId, c.name AS className,
+                e.duration, e.status, e.deadline, e.created_at AS createdAt
+         FROM exams e
+         LEFT JOIN works w ON e.work_id = w.id
+         LEFT JOIN classes c ON e.class_id = c.id
+         WHERE e.id = ? AND e.teacher_id = ?`
+      ).bind(examId, user.id).first();
+      if (!exam) return cachedJson({ error: 'Không tìm thấy.' }, { status: 404, profile: 'nocache' });
+
+      const questions = await env.DB.prepare(
+        `SELECT id, content, type, points, rubric, order_index AS orderIndex
+         FROM questions WHERE exam_id = ? ORDER BY order_index ASC`
+      ).bind(examId).all();
+
+      return cachedJson({ ...exam, questions: questions.results || [] }, { profile: 'dynamic' });
+    }
 
     if (user.role === 'teacher') {
       const teacherWhere = classId
@@ -118,7 +140,7 @@ export async function onRequestPost({ request, env, data }) {
       return cachedJson({ success: true, added: questions.length }, { status: 201, profile: 'nocache' });
     }
 
-    // ── Mode: create new exam (standalone) ──────────────────────────────────
+    // ── Mode: create new exam (with optional questions — 1 request) ────────
     // Validate type enum
     const validTypes = ['exercise', 'exam'];
     if (body.type != null && !validTypes.includes(body.type)) {
@@ -136,7 +158,27 @@ export async function onRequestPost({ request, env, data }) {
       "INSERT INTO exams (id, title, type, work_id, class_id, teacher_id, duration, status, deadline, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ).bind(id, String(body.title).trim(), examType, body.workId || null, body.classId || null, user.id, body.duration || 60, examStatus, body.deadline || null, now).run();
 
-    return cachedJson({ id, title: String(body.title).trim(), type: examType, status: examStatus, createdAt: now }, { status: 201, profile: 'nocache' });
+    // Insert questions in the same request (1-shot, no partial save)
+    const questions = Array.isArray(body.questions) ? body.questions : [];
+    if (questions.length > 0) {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        await env.DB.prepare(
+          `INSERT INTO questions (id, exam_id, content, type, points, rubric, order_index)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          crypto.randomUUID(),
+          id,
+          String(q.content || '').slice(0, 500),
+          String(q.type || 'essay'),
+          Math.max(1, Math.min(10, Number(q.points) || 2)),
+          String(q.rubric || '').slice(0, 500),
+          i + 1
+        ).run();
+      }
+    }
+
+    return cachedJson({ id, title: String(body.title).trim(), type: examType, status: examStatus, createdAt: now, questionsAdded: questions.length }, { status: 201, profile: 'nocache' });
   } catch (e) {
     console.error('exams POST error:', e);
     return cachedJson({ error: 'Lỗi khi tạo đề thi. Vui lòng thử lại.' }, { status: 500, profile: 'nocache' });

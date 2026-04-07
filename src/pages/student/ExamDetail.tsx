@@ -78,6 +78,7 @@ export default function ExamDetailPage() {
         const next = prev + 1;
         if (next >= totalSeconds) {
           if (tickRef.current) clearInterval(tickRef.current);
+          if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
           handleAutoSubmit();
         }
         return next;
@@ -109,6 +110,10 @@ export default function ExamDetailPage() {
     setIsSubmitting(true);
     setError('');
 
+    // Stop both timers immediately
+    if (tickRef.current) clearInterval(tickRef.current);
+    if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+
     const ans: Record<string, string> = {};
     document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-answer-id]').forEach(el => {
       ans[el.dataset.answerId || el.id] = el.value;
@@ -126,6 +131,18 @@ export default function ExamDetailPage() {
     } catch {
       setError('Nộp bài thất bại. Vui lòng thử lại.');
       setIsSubmitting(false);
+      // Restart timers on failure
+      tickRef.current = setInterval(() => {
+        setElapsed(prev => {
+          const next = prev + 1;
+          if (next >= totalSeconds) {
+            if (tickRef.current) clearInterval(tickRef.current);
+            if (autoSaveTimer.current) clearInterval(autoSaveTimer.current);
+            handleAutoSubmit();
+          }
+          return next;
+        });
+      }, 1000);
     }
   };
 

@@ -141,7 +141,7 @@ export async function onRequestPatch({ request, env, data }) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
-    const { id, teacherScore, teacherComment } = await request.json();
+    const { id, teacherScore, teacherComment, aiScore } = await request.json();
     if (!id) return new Response(JSON.stringify({ error: 'Thiếu id.' }), { status: 400 });
 
     const exam = await env.DB.prepare(
@@ -149,9 +149,16 @@ export async function onRequestPatch({ request, env, data }) {
     ).bind(id, user.id).first();
     if (!exam) return new Response(JSON.stringify({ error: 'Không có quyền.' }), { status: 403 });
 
-    await env.DB.prepare(
-      "UPDATE submissions SET teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
-    ).bind(teacherScore ?? null, teacherComment ?? null, id).run();
+    // Persist aiScore if provided (preserve existing), then set teacher score + mark returned
+    if (aiScore != null) {
+      await env.DB.prepare(
+        "UPDATE submissions SET ai_score = ?, teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
+      ).bind(aiScore, teacherScore ?? null, teacherComment ?? null, id).run();
+    } else {
+      await env.DB.prepare(
+        "UPDATE submissions SET teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
+      ).bind(teacherScore ?? null, teacherComment ?? null, id).run();
+    }
 
     // Log: teacher returned grade
     const sub = await env.DB.prepare(

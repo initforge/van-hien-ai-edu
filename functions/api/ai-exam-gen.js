@@ -1,14 +1,30 @@
 /**
- * POST /api/ai/exam-gen — AI exam/question generation
+ * POST /api/ai/exam-gen — AI exam/question generation (direct to DB)
  *
  * Uses @cf/mistralai/mistral-small-3.1-24b-instruct for structured question generation.
- * Creates exam + questions in DB. Called by teacher.
+ * Creates exam + questions in DB. Called by teacher after approving a preview.
  *
- * Body: { workId?, classId?, title, type, duration, questions: [{content, type, points}] }
+ * Body: { workId?, classId?, title, type, duration, level, questions }
  */
 import { aiCall } from './_ai.js';
 import { logTokenUsage } from './_tokenLog.js';
 import { jsonError, parseAiJson, estimateTokens, getWorkAnalysis } from './_utils.js';
+
+// ── Level metadata (mirror of exam-preview.js) ────────────────────────────
+const LEVEL_META = {
+  THCS: {
+    gradeBand: 'THCS (lớp 6–9)',
+    gradeDesc: 'phù hợp học sinh THCS, ngôn ngữ dễ hiểu, yêu cầu vừa phải',
+    readerLevel: 'học sinh THCS',
+    writingLen: 'khoảng 150–200 chữ',
+  },
+  THPT: {
+    gradeBand: 'THPT (lớp 10–12)',
+    gradeDesc: 'phù hợp học sinh THPT, ngôn ngữ chuyên sâu, yêu cầu cao hơn',
+    readerLevel: 'học sinh THPT',
+    writingLen: 'khoảng 200–300 chữ',
+  },
+};
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -18,67 +34,24 @@ export async function onRequestPost({ request, env, data }) {
     }
 
     const body = await request.json();
-    const { title, type = 'exercise', duration = 45, workId, classId } = body;
-    const { questions: questionRequests = [] } = body;
+    const {
+      title,
+      type = 'exercise',
+      duration = 45,
+      workId,
+      classId,
+      level = 'THCS',
+      questions: parsedQuestions = [],
+    } = body;
 
     if (!title?.trim()) {
       return jsonError('Thiếu tiêu đề đề thi.', 400);
     }
-
-    // ── Build AI prompt from work_analysis ────────────────────────────────
-    let passageContext = '';
-    if (workId) {
-      const work = await env.DB.prepare(
-        `SELECT title, author FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
-      ).bind(workId, user.id).first();
-      if (work) {
-        const analysis = await getWorkAnalysis(env.DB, workId);
-        const parts = [
-          analysis.summary       && `Tóm tắt:\n${analysis.summary}`,
-          analysis.themes       && `Chủ đề:\n${analysis.themes}`,
-          analysis.characters   && `Nhân vật:\n${analysis.characters}`,
-          analysis.art_features && `Đặc sắc nghệ thuật:\n${analysis.art_features}`,
-          analysis.content_value && `Giá trị:\n${analysis.content_value}`,
-        ].filter(Boolean);
-        passageContext = parts.length
-          ? `\n\nTác phẩm "${work.title}" của ${work.author}:\n${parts.join('\n')}`
-          : '';
-      }
-    }
-
-    // Build existing questions hint
-    const existingHint = questionRequests.length
-      ? questionRequests.map((q, i) => `Câu ${i + 1}: ${q.content} (${q.type}, ${q.points} điểm)`).join('\n')
-      : '(chưa có câu hỏi nào)';
-
-    const systemPrompt =
-      `Bạn là giáo viên ngữ văn Việt Nam. Nhiệm vụ: tạo CÂU HỎI bài tập/đề thi.` +
-      passageContext +
-      `\n\nLuôn trả JSON theo format sau, KHÔNG thêm text khác:` +
-      `\n\n{\n  "questions": [\n    {\n      "content": "nội dung câu hỏi",\n      "type": "essay|short_answer|multiple_choice",\n      "points": 1-10,\n      "rubric": "gợi ý đáp án / rubric ngắn"\n    }\n  ]\n}` +
-      `\n\nQuy tắc: Điểm essay tối đa 10, short_answer tối đa 5, multiple_choice tối đa 2.`;
-
-    const userPrompt =
-      `Tạo 5 câu hỏi cho đề "${title}" (${type}).\n` +
-      `Tỷ lệ: 2 câu ngắn (1-2 điểm), 2 câu essay ngắn (2-3 điểm), 1 câu essay dài (4-5 điểm).\n` +
-      `Yêu cầu: câu 1-2 phần đọc hiểu, câu 3-5 phần nghị luận.\n` +
-      `Đề thi thuộc tác phẩm văn học Việt Nam.`;
-
-    // ── Call AI ─────────────────────────────────────────────────────────────
-    const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
-      '@cf/mistralai/mistral-small-3.1-24b-instruct',
-      { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
-    );
-
-    // Parse AI JSON
-    const { parsed } = parseAiJson(aiResponse, null);
-    const parsedQuestions = /** @type {any[]} */ (parsed?.questions || []).slice(0, 10);
-
     if (!parsedQuestions.length) {
-      return jsonError('AI không tạo được câu hỏi. Vui lòng thử lại.', 500);
+      return jsonError('Không có câu hỏi.', 400);
     }
 
-    // ── Create exam + questions in DB (transactional) ────────────────────
+    // ── Create exam in DB ──────────────────────────────────────────────────
     const examId = crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -104,15 +77,16 @@ export async function onRequestPost({ request, env, data }) {
       ).run();
     }
 
-    // Log token usage
-    await logTokenUsage(env, user.id, 'exam_gen',
-      `Tạo đề: ${title} (${parsedQuestions.length} câu)`, inputTokens, outputTokens);
+    // Log token usage — called by exam-preview on behalf, so log as exam_preview
+    await logTokenUsage(env, user.id, 'exam_preview',
+      `Duyệt đề: ${title.trim()} (${parsedQuestions.length} câu)`, 0, 0);
 
     return new Response(JSON.stringify({
       success: true,
       examId,
       title: title.trim(),
       type,
+      level,
       questions: parsedQuestions,
     }), {
       status: 201,

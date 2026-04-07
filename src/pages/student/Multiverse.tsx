@@ -256,6 +256,7 @@ export default function MultiversePage() {
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-outline">AI tạo: sinh truyện ngắn hoàn chỉnh từ điểm rẽ của bạn.</p>
               </div>
               {createError && (
                 <p className="text-xs text-red-500">{createError}</p>

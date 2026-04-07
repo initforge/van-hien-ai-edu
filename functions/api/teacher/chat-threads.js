@@ -3,6 +3,7 @@
  *
  * Query params:
  *   characterId — filter by character name
+ *   classId     — filter by class (via exam/class join)
  *   limit, offset — pagination
  */
 import { cachedJson } from '../_cache.js';
@@ -17,12 +18,19 @@ export async function onRequestGet({ env, data, request }) {
 
     const url = new URL(request.url);
     const characterName = url.searchParams.get('characterId');
-    const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '20', 10)), 100);
-    const offset = Math.max(0, parseInt(url.searchParams.get('offset') || '0', 10));
+    const classId = url.searchParams.get('classId');
+
+    const rawLimit = parseInt(url.searchParams.get('limit') || '20', 10);
+    const rawOffset = parseInt(url.searchParams.get('offset') || '0', 10);
+    const limit = Math.min(Math.max(1, isNaN(rawLimit) ? 20 : rawLimit), 100);
+    const offset = Math.max(0, isNaN(rawOffset) ? 0 : rawOffset);
 
     const where = ['c.teacher_id = ?'];
     const binds = [user.id];
     if (characterName) { where.push('ct.character_name = ?'); binds.push(characterName); }
+    if (classId)       { where.push('e.class_id = ?'); binds.push(classId); }
+
+    const whereStr = where.join(' AND ');
 
     const [rowsResult, countResult] = await Promise.all([
       env.DB.prepare(`
@@ -34,15 +42,23 @@ export async function onRequestGet({ env, data, request }) {
         FROM chat_threads ct
         JOIN characters c ON ct.character_name = c.name
         JOIN users u ON ct.student_id = u.id
-        WHERE ${where.join(' AND ')}
+        LEFT JOIN works w ON ct.work_id = w.id
+        LEFT JOIN exams e ON e.work_id = w.id
+        WHERE ${whereStr}
+        GROUP BY ct.id
         ORDER BY ct.created_at DESC
         LIMIT ? OFFSET ?`
       ).bind(...binds, limit, offset).all(),
       env.DB.prepare(`
         SELECT COUNT(*) AS total
-        FROM chat_threads ct
-        JOIN characters c ON ct.character_name = c.name
-        WHERE ${where.join(' AND ')}`
+        FROM (
+          SELECT ct.id FROM chat_threads ct
+          JOIN characters c ON ct.character_name = c.name
+          LEFT JOIN works w ON ct.work_id = w.id
+          LEFT JOIN exams e ON e.work_id = w.id
+          WHERE ${whereStr}
+          GROUP BY ct.id
+        )`
       ).bind(...binds).first(),
     ]);
 

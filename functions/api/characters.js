@@ -17,10 +17,13 @@ export async function onRequestGet({ env, data, request }) {
           `SELECT c.id, c.name, c.initials, c.role, c.description, c.personality, c.system_prompt AS systemPrompt,
                   c.active, c.work_id AS workId, w.title AS workTitle,
                   c.created_at AS createdAt,
-                  (SELECT COUNT(*) FROM chat_messages cm JOIN chat_threads ct ON cm.thread_id = ct.id WHERE ct.character_name = c.name) AS chatCount
+                  COUNT(DISTINCT cm.id) AS chatCount
            FROM characters c
            LEFT JOIN works w ON c.work_id = w.id
+           LEFT JOIN chat_threads ct ON ct.character_name = c.name
+           LEFT JOIN chat_messages cm ON cm.thread_id = ct.id
            WHERE c.teacher_id = ?
+           GROUP BY c.id
            ORDER BY c.created_at DESC
            LIMIT ? OFFSET ?`
         ).bind(user.id, limit, offset).all(),

@@ -8,7 +8,7 @@ import { fetcher } from '../../lib/fetcher';
 import type { StudentStats, UpcomingExam, RecentResult } from '../../types/api';
 
 export default function StudentDashboardPage() {
-  const [expandedResult, setExpandedResult] = useState<number | null>(null);
+  const [expandedResult, setExpandedResult] = useState<string | null>(null);
   const { user } = useAuth();
   const { data } = useSWR<StudentStats>('/api/stats', fetcher);
 
@@ -70,15 +70,15 @@ export default function StudentDashboardPage() {
 
           <div className="space-y-4">
             {recentResults.map((result, index) => (
-              <div 
+              <div
                 key={result.submissionId || index}
-                onClick={() => setExpandedResult(expandedResult === index ? null : index)}
+                onClick={() => setExpandedResult(expandedResult === result.submissionId ? null : result.submissionId)}
                 className="bg-white/80 backdrop-blur-md rounded-2xl border-[0.5px] border-outline-variant/30 overflow-hidden hover:shadow-md transition-all shadow-[0_4px_20px_-5px_rgba(26,28,27,0.08)] cursor-pointer group"
               >
                 <div className="p-6 flex items-center justify-between">
                   <div className="flex items-center gap-5">
                     <div className={`w-16 h-16 rounded-full border-[3px] flex items-center justify-center font-bold text-xl transition-colors ${result.examType === 'exam' ? 'border-primary/30 text-primary group-hover:border-primary' : 'border-secondary/30 text-secondary group-hover:border-secondary'}`}>
-                      {result.teacherScore?.toFixed(1) || result.aiScore?.toFixed(1) || '?'}
+                      {(result.teacherScore ?? result.aiScore)?.toFixed(1) ?? '?'}
                     </div>
                     <div>
                       <h4 className="font-headline font-bold text-on-surface">{result.examTitle}</h4>
@@ -87,9 +87,9 @@ export default function StudentDashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <span className={`material-symbols-outlined text-primary transition-transform duration-300 ${expandedResult === index ? "rotate-180" : ""}`}>expand_more</span>
+                  <span className={`material-symbols-outlined text-primary transition-transform duration-300 ${expandedResult === result.submissionId ? "rotate-180" : ""}`}>expand_more</span>
                 </div>
-                {expandedResult === index && (
+                {expandedResult === result.submissionId && (
                   <div className="px-6 pb-6 border-t border-outline-variant/10 pt-4 space-y-3 animate-[fadeIn_0.2s_ease-out]">
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                        <div className="bg-surface-container-low p-3 rounded-lg text-center">
