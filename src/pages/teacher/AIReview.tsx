@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 
 type Tab = 'class_stats' | 'student_stats' | 'tokens' | 'rubrics';
 
@@ -101,7 +101,7 @@ export default function AIReviewPage() {
     if (!editingRubric) return;
     setSaving(true);
     try {
-      await fetch('/api/teacher/rubric', {
+      const res = await authFetch('/api/teacher/rubric', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -112,8 +112,13 @@ export default function AIReviewPage() {
           hintPrompt: rubricForm.hintPrompt,
         }),
       });
-      setEditingRubric(null);
-      await mutate();
+      if (res.ok) {
+        setEditingRubric(null);
+        await mutate();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Lưu thất bại.');
+      }
     } finally {
       setSaving(false);
     }
@@ -128,21 +133,35 @@ export default function AIReviewPage() {
     if (!rubricForm.name.trim()) return;
     setSaving(true);
     try {
-      await fetch('/api/teacher/rubric', {
+      const res = await authFetch('/api/teacher/rubric', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(rubricForm),
       });
-      setEditingRubric(null);
-      await mutate();
+      if (res.ok) {
+        setEditingRubric(null);
+        await mutate();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Tạo thất bại.');
+      }
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeleteRubric = async (id: string) => {
-    await fetch(`/api/teacher/rubric?id=${id}`, { method: 'DELETE' });
-    await mutate();
+    try {
+      const res = await authFetch(`/api/teacher/rubric?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Xóa thất bại.');
+      }
+    } catch {
+      alert('Lỗi mạng. Vui lòng thử lại.');
+    } finally {
+      await mutate();
+    }
   };
 
   return (
@@ -402,66 +421,91 @@ export default function AIReviewPage() {
       {editingRubric !== null && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}
           onClick={() => setEditingRubric(null)}
         >
-          <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col animate-[fadeIn_0.2s_ease-out]"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-headline text-xl font-bold text-primary mb-6">
-              {editingRubric.id ? 'Sửa tiêu chí' : 'Thêm tiêu chí mới'}
-            </h3>
-            <div className="space-y-4">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-outline-variant/20 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    {editingRubric.id ? 'edit' : 'add_circle'}
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-headline text-lg font-bold text-primary">
+                    {editingRubric.id ? 'Sửa tiêu chí' : 'Thêm tiêu chí mới'}
+                  </h3>
+                  <p className="text-xs text-outline">Cập nhật cách AI chấm điểm bài viết.</p>
+                </div>
+              </div>
+              <button onClick={() => setEditingRubric(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors text-outline hover:text-on-surface">
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Tên tiêu chí *</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Tên tiêu chí *</label>
                 <input value={rubricForm.name}
                   onChange={e => setRubricForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 outline-none"
-                  placeholder="VD: Nội dung"
-                  required
+                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  placeholder="VD: Nội dung, Hình thức, Bố cục"
+                  autoFocus
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Mô tả / Hướng dẫn chấm</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Mô tả / Hướng dẫn chấm</label>
                 <textarea value={rubricForm.description}
                   onChange={e => setRubricForm(f => ({ ...f, description: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-primary/30 outline-none resize-y min-h-[80px]"
+                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-3 text-sm leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-y min-h-[80px]"
                   placeholder="Mô tả ngắn gọn cách đánh giá tiêu chí này..."
                 />
               </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                  Trọng số: <span className="text-primary font-bold">{rubricForm.weight}%</span>
-                </label>
+              <div className="bg-surface-container-low/50 rounded-xl p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Trọng số</label>
+                  <span className="text-sm font-bold text-primary">{rubricForm.weight}%</span>
+                </div>
                 <input type="range" min="5" max="100" step="5"
                   value={rubricForm.weight}
                   onChange={e => setRubricForm(f => ({ ...f, weight: Number(e.target.value) }))}
                   className="w-full accent-primary"
                 />
-                <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                  <span>5%</span><span>50%</span><span>100%</span>
+                <div className="flex justify-between text-[10px] text-outline mt-1">
+                  <span>5%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
                 </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Gợi ý cho AI (prompt hint)</label>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">
+                  Gợi ý cho AI
+                  <span className="ml-1 font-normal text-outline normal-case tracking-normal">(prompt hint)</span>
+                </label>
                 <textarea value={rubricForm.hintPrompt}
                   onChange={e => setRubricForm(f => ({ ...f, hintPrompt: e.target.value }))}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm leading-relaxed focus:ring-2 focus:ring-primary/30 outline-none resize-y min-h-[80px]"
+                  className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-3 text-sm leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-y min-h-[72px]"
                   placeholder="VD: Trừ điểm nếu lạc đề, thiếu dẫn chứng..."
                 />
               </div>
             </div>
-            <div className="flex gap-3 mt-6">
+
+            {/* Modal footer */}
+            <div className="flex gap-3 px-6 py-4 border-t border-outline-variant/20 shrink-0">
               <button onClick={() => setEditingRubric(null)}
-                className="flex-1 py-2.5 border border-outline-variant/30 rounded-xl font-semibold text-sm hover:bg-surface-container-low transition-colors">
+                className="flex-1 py-3 border border-outline-variant/30 rounded-xl font-semibold text-sm hover:bg-surface-container-low transition-colors text-on-surface">
                 Hủy
               </button>
               <button
                 onClick={editingRubric.id ? handleSaveRubric : handleCreateRubric}
                 disabled={saving || !rubricForm.name.trim()}
-                className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 disabled:opacity-50 text-sm transition-all"
+                className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary/90 disabled:opacity-50 text-sm shadow-md hover:shadow-lg transition-all"
               >
-                {saving ? 'Đang lưu…' : editingRubric.id ? 'Lưu' : 'Thêm mới'}
+                {saving ? 'Đang lưu…' : editingRubric.id ? 'Lưu thay đổi' : 'Thêm tiêu chí'}
               </button>
             </div>
           </div>

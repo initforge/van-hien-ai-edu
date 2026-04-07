@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import { formatTimeAgo } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,7 +60,6 @@ export default function CharactersPage() {
   // ── Toggle active ───────────────────────────────────────────────────────────
   const handleToggleActive = async (char: TeacherCharacter) => {
     const newActive = !char.active;
-    // Optimistic
     await mutate(
       '/api/characters',
       (current: { data: TeacherCharacter[] } | undefined) => ({
@@ -72,13 +71,14 @@ export default function CharactersPage() {
       false
     );
     try {
-      await fetch('/api/characters', {
+      const res = await authFetch('/api/characters', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: char.id, active: newActive }),
       });
+      if (!res.ok) { await mutate('/api/characters'); return; }
+      await mutate('/api/characters');
     } catch {
-      // Rollback
       await mutate('/api/characters');
     }
   };
@@ -98,7 +98,7 @@ export default function CharactersPage() {
       false
     );
     try {
-      await fetch('/api/characters', {
+      const res = await authFetch('/api/characters', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -112,6 +112,8 @@ export default function CharactersPage() {
           active: editForm.active,
         }),
       });
+      if (!res.ok) { await mutate('/api/characters'); return; }
+      await mutate('/api/characters');
     } catch {
       await mutate('/api/characters');
     }
@@ -129,7 +131,6 @@ export default function CharactersPage() {
       personality: String(formData.get('personality') || ''),
       systemPrompt: String(formData.get('systemPrompt') || ''),
     };
-    // Optimistic: add with temp id
     const tempId = `temp-${Date.now()}`;
     await mutate(
       '/api/characters',
@@ -140,14 +141,14 @@ export default function CharactersPage() {
       false
     );
     try {
-      await fetch('/api/characters', {
+      const res = await authFetch('/api/characters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newChar),
       });
-      setShowAddForm(false);
+      if (res.ok) { setShowAddForm(false); }
+      await mutate('/api/characters');
     } catch {
-      // Rollback
       await mutate('/api/characters');
     }
   };

@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
+import * as XLSX from 'xlsx';
+import BaseModal from '../../components/ui/BaseModal';
 
 interface ClassRow {
   id: string;
@@ -36,6 +38,11 @@ export default function ClassManagementPage() {
   const [pwError, setPwError] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
   const [pwSuccess, setPwSuccess] = useState('');
+  const [editingClass, setEditingClass] = useState<ClassRow | null>(null);
+  const [editClassName, setEditClassName] = useState('');
+  const [editClassGrade, setEditClassGrade] = useState('');
+  const [deletingClass, setDeletingClass] = useState<ClassRow | null>(null);
+  const [deletingStudent, setDeletingStudent] = useState<StudentRow | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: classesData, mutate: mutateClasses } = useSWR<{ data: ClassRow[] }>('/api/teacher/classes', fetcher);
@@ -72,7 +79,7 @@ export default function ClassManagementPage() {
     setCreateGrade('');
     setShowCreate(false);
     try {
-      const res = await fetch('/api/teacher/classes', {
+      const res = await authFetch('/api/teacher/classes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: createName.trim(), gradeLevel: createGrade ? parseInt(createGrade) : undefined }),
@@ -86,6 +93,50 @@ export default function ClassManagementPage() {
     }
   };
 
+  const handleEditClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClass || !editClassName.trim()) return;
+    const res = await authFetch(`/api/teacher/classes/${editingClass.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editClassName.trim(), gradeLevel: editClassGrade ? parseInt(editClassGrade) : undefined }),
+    });
+    if (res.status === 404) {
+      // Lớp đã bị admin xóa — đóng modal và xóa khỏi cache
+      setEditingClass(null);
+      await mutateClasses();
+      if (activeClass?.id === editingClass.id) setActiveClass(null);
+    } else if (res.ok) {
+      await mutateClasses();
+      setEditingClass(null);
+    }
+  };
+
+  const handleDeleteClass = async () => {
+    if (!deletingClass) return;
+    const res = await authFetch(`/api/teacher/classes/${deletingClass.id}`, { method: 'DELETE' });
+    if (res.status === 404) {
+      // Lớp đã bị admin xóa — đồng bộ lại
+      setDeletingClass(null);
+      await mutateClasses();
+      if (activeClass?.id === deletingClass.id) setActiveClass(null);
+    } else if (res.ok) {
+      await mutateClasses();
+      if (activeClass?.id === deletingClass.id) setActiveClass(null);
+      setDeletingClass(null);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deletingStudent) return;
+    const res = await authFetch(`/api/teacher/students/${deletingStudent.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      await mutateStudents();
+      await mutateClasses();
+    }
+    setDeletingStudent(null);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeClass) return;
@@ -93,25 +144,28 @@ export default function ClassManagementPage() {
     setImportResult(null);
 
     try {
-      const text = await file.text();
-      const { students, skipped } = parseExcel(text);
-      const res = await fetch('/api/teacher/students/import', {
+      // Read as ArrayBuffer so xlsx library can handle .xlsx / .xls / .csv
+      const buffer = await file.arrayBuffer();
+      const { students, skipped } = parseExcel(buffer);
+      const res = await authFetch('/api/teacher/students/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ classId: activeClass.id, students }),
       });
       const data = await res.json();
-      setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? skipped });
+      setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? skipped, credentials: data.credentials ?? [] });
     } catch {
-      setImportResult({ created: 0, skipped: [{ name: 'Lỗi', reason: 'Không đọc được file' }] });
+      setImportResult({ created: 0, skipped: [{ name: 'Lỗi', reason: 'Không đọc được file. Đảm bảo file là .xlsx, .xls, hoặc .csv.' }], credentials: [] });
     } finally {
       setImporting(false);
+      // Reset the file input so same file can be selected again
+      if (fileRef.current) fileRef.current.value = '';
     }
   };
 
   const handleRemoveStudent = async (studentId: string) => {
     if (!activeClass) return;
-    // Optimistic
+    // Optimistic remove
     await mutateStudents(
       (current: { data: StudentRow[] } | undefined) => ({
         ...current,
@@ -120,9 +174,16 @@ export default function ClassManagementPage() {
       false
     );
     try {
-      await fetch(`/api/teacher/students?classId=${activeClass.id}&studentId=${studentId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/teacher/students?classId=${activeClass.id}&studentId=${studentId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // Rollback
+        await mutateStudents();
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Xóa thất bại.');
+      }
     } catch {
       await mutateStudents();
+      alert('Lỗi mạng. Vui lòng thử lại.');
     }
   };
 
@@ -133,7 +194,7 @@ export default function ClassManagementPage() {
     setPwSaving(true);
     setPwError('');
     try {
-      const res = await fetch('/api/teacher/students', {
+      const res = await authFetch('/api/teacher/students', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId: editStudentPw.id, password: newPassword }),
@@ -181,25 +242,48 @@ export default function ClassManagementPage() {
         {classes.map(c => (
           <div
             key={c.id}
-            onClick={() => setActiveClass(c.id === activeClass?.id ? null : c)}
-            className={`bg-white/80 backdrop-blur-md rounded-2xl p-6 border cursor-pointer transition-all hover:shadow-lg ${
+            className={`bg-white/80 backdrop-blur-md rounded-2xl p-6 border transition-all hover:shadow-lg ${
               activeClass?.id === c.id
                 ? 'border-primary ring-2 ring-primary/20 shadow-lg'
                 : 'border-outline-variant/20 hover:border-primary/40'
             }`}
           >
             <div className="flex justify-between items-start mb-4">
-              <div>
+              <div
+                className="flex-1 cursor-pointer"
+                onClick={() => setActiveClass(c.id === activeClass?.id ? null : c)}
+              >
                 <h3 className="font-headline font-bold text-primary text-xl">{c.name}</h3>
                 {c.gradeLevel && (
                   <span className="text-xs text-secondary font-medium">Khối {c.gradeLevel}</span>
                 )}
               </div>
+              <div className="flex gap-1 ml-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setEditingClass(c); setEditClassName(c.name); setEditClassGrade(c.gradeLevel ? String(c.gradeLevel) : ''); }}
+                  title="Sửa lớp"
+                  className="p-1.5 rounded-lg hover:bg-surface-container-high text-secondary hover:text-primary transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">edit</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeletingClass(c); }}
+                  title="Xóa lớp"
+                  className="p-1.5 rounded-lg hover:bg-surface-container-high text-secondary hover:text-red-500 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">delete</span>
+                </button>
+              </div>
+            </div>
+            <div
+              className="flex flex-col gap-0.5 items-end mb-3"
+              onClick={() => setActiveClass(c.id === activeClass?.id ? null : c)}
+            >
               {c.inviteCode && (
-                <div className="flex flex-col items-end gap-0.5">
+                <>
                   <span className="text-[9px] font-bold text-[#C9A84C] uppercase">Mã lớp</span>
                   <code className="font-mono font-bold text-[#C9A84C] text-sm tracking-wider">{c.inviteCode}</code>
-                </div>
+                </>
               )}
             </div>
             <div className="flex gap-4 mb-3">
@@ -340,10 +424,10 @@ export default function ClassManagementPage() {
                           onClick={() => { setEditStudentPw(s); setNewPassword(''); setPwError(''); }}
                           className="text-[#C9A84C] hover:text-[#b8973d] text-sm font-medium transition-colors mr-3"
                         >
-                          Đổi mk
+                          Đổi mật khẩu
                         </button>
                         <button
-                          onClick={() => handleRemoveStudent(s.id)}
+                          onClick={() => setDeletingStudent(s)}
                           className="text-red-400 hover:text-red-600 text-sm font-medium transition-colors"
                         >
                           Xóa
@@ -370,51 +454,52 @@ export default function ClassManagementPage() {
       )}
 
       {/* Create Class Modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
-          onClick={() => setShowCreate(false)}>
-          <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}>
-            <h3 className="text-xl font-headline font-bold text-primary mb-6">Thêm lớp mới</h3>
-            <form onSubmit={handleCreateClass} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Tên lớp *</label>
-                <input
-                  value={createName}
-                  onChange={e => setCreateName(e.target.value)}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/30 outline-none"
-                  placeholder="VD: Lớp 8A"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Khối</label>
-                <select
-                  value={createGrade}
-                  onChange={e => setCreateGrade(e.target.value)}
-                  className="w-full border border-[#326286]/20 rounded-xl px-4 py-2.5 text-sm bg-white focus:ring-2 focus:ring-primary/30 outline-none"
-                >
-                  <option value="">— Chọn khối —</option>
-                  {[6, 7, 8, 9].map(g => (
-                    <option key={g} value={g}>Khối {g}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreate(false)}
-                  className="flex-1 border border-[#326286]/20 py-2.5 rounded-xl font-semibold hover:bg-surface-container-low transition-colors">
-                  Hủy
-                </button>
-                <button type="submit"
-                  className="flex-1 bg-primary text-white py-2.5 rounded-xl font-semibold hover:bg-primary/90 transition-colors">
-                  Tạo lớp
-                </button>
-              </div>
-            </form>
+      <BaseModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="Thêm lớp mới"
+        subtitle="Tạo lớp học mới để quản lý học sinh."
+        icon="school"
+        footer={
+          <>
+            <button type="button" onClick={() => setShowCreate(false)}
+              className="flex-1 border border-outline-variant/30 py-3 rounded-xl font-semibold hover:bg-surface-container-low transition-colors text-on-surface">
+              Hủy
+            </button>
+            <button type="submit" form="createClassForm"
+              className="flex-1 bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary/90 transition-colors shadow-md">
+              Tạo lớp
+            </button>
+          </>
+        }
+      >
+        <form id="createClassForm" onSubmit={handleCreateClass} className="space-y-5">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tên lớp *</label>
+            <input
+              value={createName}
+              onChange={e => setCreateName(e.target.value)}
+              className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="VD: Lớp 8A"
+              required
+              autoFocus
+            />
           </div>
-        </div>
-      )}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Khối</label>
+            <select
+              value={createGrade}
+              onChange={e => setCreateGrade(e.target.value)}
+              className="w-full bg-white border border-outline-variant/30 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            >
+              <option value="">— Chọn khối —</option>
+              {[6, 7, 8, 9].map(g => (
+                <option key={g} value={g}>Khối {g}</option>
+              ))}
+            </select>
+          </div>
+        </form>
+      </BaseModal>
 
       {/* Credentials Modal */}
       {showCredentials && showCredentials.length > 0 && (
@@ -470,6 +555,126 @@ export default function ClassManagementPage() {
                 <span className="material-symbols-outlined text-sm text-tertiary">info</span>
                 Gửi thông tin đăng nhập cho học sinh qua kênh phù hợp (Zalo, email...). Mật khẩu có thể đổi sau khi đăng nhập.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Class Modal */}
+      {editingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setEditingClass(null)}>
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <form onSubmit={handleEditClass}>
+              <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+                <span className="material-symbols-outlined text-secondary text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  edit
+                </span>
+                <h3 className="text-lg font-headline font-bold text-primary">Sửa lớp</h3>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-1.5">Tên lớp</label>
+                  <input
+                    type="text"
+                    value={editClassName}
+                    onChange={e => setEditClassName(e.target.value)}
+                    className="w-full border border-outline-variant/40 rounded-xl px-4 py-2.5 text-primary bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                    placeholder="VD: 9/1"
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-secondary uppercase tracking-wide mb-1.5">Khối</label>
+                  <select
+                    value={editClassGrade}
+                    onChange={e => setEditClassGrade(e.target.value)}
+                    className="w-full border border-outline-variant/40 rounded-xl px-4 py-2.5 text-primary bg-surface-container-high focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  >
+                    <option value="">— Không chọn —</option>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12].map(k => (
+                      <option key={k} value={k}>Khối {k}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 px-6 pb-6">
+                <button type="button" onClick={() => setEditingClass(null)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-outline-variant/40 text-secondary font-semibold hover:bg-surface-container-high transition-colors">
+                  Hủy
+                </button>
+                <button type="submit"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors shadow-md">
+                  Lưu
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Class Confirm Modal */}
+      {deletingClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setDeletingClass(null)}>
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-red-500 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                warning
+              </span>
+              <h3 className="text-lg font-headline font-bold text-red-500">Xóa lớp</h3>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-primary leading-relaxed">
+                Xóa lớp <strong>{deletingClass.name}</strong> sẽ xóa toàn bộ học sinh trong lớp. Hành động này <strong>không thể hoàn tác</strong>.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button onClick={() => setDeletingClass(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-outline-variant/40 text-secondary font-semibold hover:bg-surface-container-high transition-colors">
+                Hủy
+              </button>
+              <button onClick={handleDeleteClass}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors shadow-md">
+                Xóa lớp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Student Confirm Modal */}
+      {deletingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setDeletingStudent(null)}>
+          <div className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-sm"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-6 pt-6 pb-0">
+              <span className="material-symbols-outlined text-red-500 text-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                warning
+              </span>
+              <h3 className="text-lg font-headline font-bold text-red-500">Xóa học sinh</h3>
+            </div>
+            <div className="px-6 py-5">
+              <p className="text-primary leading-relaxed">
+                Xóa học sinh <strong>{deletingStudent.name}</strong>. Tài khoản sẽ bị xóa vĩnh viễn và không thể khôi phục.
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button onClick={() => setDeletingStudent(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-outline-variant/40 text-secondary font-semibold hover:bg-surface-container-high transition-colors">
+                Hủy
+              </button>
+              <button onClick={handleDeleteStudent}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors shadow-md">
+                Xóa học sinh
+              </button>
             </div>
           </div>
         </div>
@@ -554,39 +759,130 @@ export default function ClassManagementPage() {
   );
 }
 
-function parseExcel(csvText: string): { students: { name: string; gender: string; birthdate: string; username: string; password: string }[]; skipped: { name: string; reason: string }[] } {
-  const lines = csvText.trim().split('\n');
+/**
+ * Parse .xlsx / .xls / .csv files using the xlsx library.
+ * Columns are matched by HEADER NAME (not position), so file format is flexible.
+ * Required columns: Họ tên (or Name), Giới tính (or Gender), Ngày sinh (or Birthdate)
+ * Optional: Lớp (class), ghi chú
+ */
+function parseExcel(buffer: ArrayBuffer): { students: { name: string; gender: string; birthdate: string; username: string; password: string }[]; skipped: { name: string; reason: string }[] } {
   const results: { name: string; gender: string; birthdate: string; username: string; password: string }[] = [];
   const skipped: { name: string; reason: string }[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    // Split by comma, strip quotes
-    const cols = lines[i].split(',').map((c: string) => c.trim().replace(/^"|"$/g, ''));
-    // cols[0] = STT, cols[1] = Họ tên, cols[2] = Giới tính, cols[3] = Ngày sinh
-    if (cols.length < 4) { skipped.push({ name: `dòng ${i + 1}`, reason: 'Thiếu cột' }); continue; }
-    const rawName = (cols[1] || '').trim();
-    const rawGender = (cols[2] || '').trim();
-    const rawBirthdate = (cols[3] || '').trim();
-    if (!rawName) { skipped.push({ name: `dòng ${i + 1}`, reason: 'Thiếu tên' }); continue; }
+  try {
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true, cellNF: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
 
-    const slug = rawName.toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z]/g, '').slice(0, 20);
+    // Locate the actual header row (some files have school info rows before the header)
+    const nameAliases = ['họ tên', 'ho ten', 'hoten', 'name', 'full name', 'họ và tên'];
+    const normalize = (s: string) =>
+      s.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 
-    let birthdate = '';
-    if (rawBirthdate) {
-      const parts = rawBirthdate.split('/');
-      if (parts.length === 3) {
-        birthdate = `${(parts[2] || '').trim().padStart(4, '0')}-${(parts[1] || '').trim().padStart(2, '0')}-${(parts[0] || '').trim().padStart(2, '0')}`;
+    // Parse all rows as arrays (header:1 returns each row as an array of cell values)
+    const allRows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '', raw: false });
+
+    let headerRowIndex = -1;
+    for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+      if (allRows[i]?.some(cell => nameAliases.includes(normalize(cell)))) {
+        headerRowIndex = i;
+        break;
       }
     }
-    results.push({
-      name: rawName,
-      gender: rawGender === 'Nam' ? 'male' : rawGender === 'Nữ' ? 'female' : '',
-      birthdate,
-      username: slug,
-      password: birthdate ? birthdate.replace(/-/g, '') : slug + '1234',
-    });
+
+    if (headerRowIndex < 0) {
+      skipped.push({ name: 'File', reason: 'Không tìm thấy cột "Họ tên". File cần có cột: Họ tên, Giới tính, Ngày sinh.' });
+      return { students: results, skipped };
+    }
+
+    const headerRow = allRows[headerRowIndex];
+
+    // Find column indices — case-insensitive + diacritic-normalized
+    const findColIdx = (aliases: string[]): number => {
+      for (let i = 0; i < aliases.length; i++) {
+        const normalizedAlias = normalize(aliases[i]);
+        const idx = headerRow.findIndex(cell => normalize(cell) === normalizedAlias);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    const colName   = findColIdx(['họ tên', 'ho ten', 'hoten', 'name', 'full name', 'họ và tên']);
+    const colGender = findColIdx(['giới tính', 'gioi tinh', 'gioitinh', 'gender', 'sex']);
+    const colBirth  = findColIdx(['ngày sinh', 'ngay sinh', 'birthdate', 'birth date', 'ngày bd', 'sinh nhật']);
+    const colSTT   = findColIdx(['stt', 'no', 'no.', 'số tt', 'stt.', 'no.']);
+
+    if (colName < 0) {
+      skipped.push({ name: 'File', reason: 'Không tìm thấy cột "Họ tên". File cần có cột: Họ tên, Giới tính, Ngày sinh.' });
+      return { students: results, skipped };
+    }
+
+    // Data rows start right after the header row
+    const dataRows = allRows.slice(headerRowIndex + 1);
+
+    if (dataRows.length === 0) {
+      skipped.push({ name: 'File', reason: 'Không tìm thấy dữ liệu học sinh.' });
+      return { students: results, skipped };
+    }
+
+    // Parse each data row
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const rawName = String(row[colName] ?? '').trim();
+
+      // Skip empty rows
+      if (!rawName) {
+        skipped.push({ name: `dòng ${i + headerRowIndex + 2}`, reason: 'Trống.' });
+        continue;
+      }
+
+      const rawGender   = String(colGender >= 0 ? row[colGender] ?? '' : '').trim();
+      let   rawBirthRaw = colBirth >= 0 ? row[colBirth] : null;
+
+      // Parse birthdate string: dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd
+      let birthdate = '';
+      if (rawBirthRaw) {
+        const s = String(rawBirthRaw).trim();
+        const parts = s.split(/[\/\-\.]/);
+        if (parts.length === 3) {
+          const [p0, p1, p2] = parts;
+          let year: number, month: number, day: number;
+          if (p2.length === 4) {
+            // dd/mm/yyyy
+            [year, month, day] = [parseInt(p2), parseInt(p1) - 1, parseInt(p0)];
+          } else if (p0.length === 4) {
+            // yyyy/mm/dd
+            [year, month, day] = [parseInt(p0), parseInt(p1) - 1, parseInt(p2)];
+          } else {
+            continue; // ambiguous, skip
+          }
+          const d = new Date(year, month, day);
+          if (!isNaN(d.getTime())) {
+            birthdate =
+              `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          }
+        }
+      }
+
+      // Generate username from name
+      const slug = rawName.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z]/g, '').slice(0, 20) || `hs${i + 1}`;
+
+      results.push({
+        name: rawName,
+        gender: rawGender === 'Nam' ? 'male' : rawGender === 'Nữ' ? 'female' : '',
+        birthdate,
+        username: slug,
+        password: birthdate ? birthdate.replace(/-/g, '') : slug + '1234',
+      });
+    }
+  } catch (err) {
+    skipped.push({ name: 'File', reason: `Lỗi đọc file: ${String(err)}` });
   }
+
+  if (results.length === 0 && skipped.length === 0) {
+    skipped.push({ name: 'File', reason: 'Không tìm thấy học sinh nào trong file.' });
+  }
+
   return { students: results, skipped };
 }

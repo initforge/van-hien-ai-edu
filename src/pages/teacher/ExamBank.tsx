@@ -1,15 +1,538 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import type { Exam } from '../../types/api';
 import AiPreviewModal from '../../components/ai/AiPreviewModal';
 import ExamPreviewContent, { type EditableQuestion } from '../../components/ai/ExamPreviewContent';
 
 type Tab = "exercise" | "exam";
+type CreateMode = 'ai' | 'manual';
+
+// ─── Exam structure state ────────────────────────────────────────────────────
+
+interface ExamStructure {
+  part1Name: string;
+  part1Points: number;
+  part2Name: string;
+  part2Points: number;
+}
+
+const DEFAULT_STRUCTURE: ExamStructure = {
+  part1Name: 'Đọc hiểu',
+  part1Points: 3,
+  part2Name: 'Làm văn',
+  part2Points: 7,
+};
+
+// ─── Exercise AI Form ───────────────────────────────────────────────────────────
+
+interface ExerciseAiFormProps {
+  works: { id: string; title: string }[];
+  onApprove: (title: string, workId?: string) => void;
+  onClose: () => void;
+  loading: boolean;
+}
+
+function ExerciseAiForm({ works, onApprove, onClose, loading }: ExerciseAiFormProps) {
+  const [title, setTitle] = useState('');
+  const [workId, setWorkId] = useState('');
+  return (
+    <div className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+          </div>
+          <div>
+            <h3 className="font-headline text-xl font-bold text-primary">AI tạo bài tập</h3>
+            <p className="text-xs text-slate-400">Chỉ cần tên bài tập — AI gợi ý 4 câu hỏi tự động.</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><span className="material-symbols-outlined">close</span></button>
+      </div>
+      <div className="flex gap-4 items-end">
+        <div className="flex-1 space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên bài tập *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} required
+            className="w-full bg-white border border-primary/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            placeholder="VD: Luyện phân tích nhân vật Tấm trong Tấm Cám"
+            autoFocus />
+        </div>
+        <div className="w-64 space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm (tùy chọn)</label>
+          <select value={workId} onChange={e => setWorkId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none">
+            <option value="">— Không chọn —</option>
+            {works.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+          </select>
+        </div>
+        <button type="button" disabled={loading || !title.trim()} onClick={() => onApprove(title.trim(), workId || undefined)}
+          className="shrink-0 flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50 transition-all">
+          <span className="material-symbols-outlined text-sm">{loading ? 'hourglass_empty' : 'auto_awesome'}</span>
+          {loading ? 'Đang tạo...' : 'Tạo bằng AI'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Exercise Manual Form ──────────────────────────────────────────────────────
+
+interface ExerciseManualFormProps {
+  works: { id: string; title: string }[];
+  classes: { id: string; name: string }[];
+  questions: EditableQuestion[];
+  onQuestionsChange: (q: EditableQuestion[]) => void;
+  onSuccess: () => void;
+  onClose: () => void;
+}
+
+function ExerciseManualForm({ works, classes, questions, onQuestionsChange, onSuccess, onClose }: ExerciseManualFormProps) {
+  const [title, setTitle] = useState('');
+  const [workId, setWorkId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const updateQ = (i: number, field: keyof EditableQuestion, val: string | number) => {
+    const next = [...questions]; next[i] = { ...next[i], [field]: val }; onQuestionsChange(next);
+  };
+  const validQuestions = questions.filter(q => q.content.trim());
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || validQuestions.length === 0) return;
+    setSaving(true); setError('');
+    try {
+      const res = await authFetch('/api/exams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim(), workId: workId || undefined, classId: classId || undefined, type: 'exercise', deadline: deadline || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error || 'Lỗi khi tạo.');
+        setSaving(false);
+        return;
+      }
+      const data = await res.json();
+      if (!data.id) { setError(data.error || 'Lỗi khi tạo.'); setSaving(false); return; }
+      for (const q of validQuestions) {
+        const qRes = await authFetch('/api/exams', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ examId: data.id, questions: [{ content: q.content.trim(), type: q.type, points: q.points, rubric: q.rubric }] }),
+        });
+        if (!qRes.ok) {
+          setError('Một số câu hỏi chưa được lưu. Vui lòng thử lại.');
+        }
+      }
+      onSuccess();
+    } catch { setError('Lỗi mạng. Vui lòng thử lại.'); }
+    setSaving(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>edit</span>
+          </div>
+          <div>
+            <h3 className="font-headline text-xl font-bold text-primary">Nhập tay bài tập</h3>
+            <p className="text-xs text-slate-400">Tự viết câu hỏi, không dùng AI.</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600"><span className="material-symbols-outlined">close</span></button>
+      </div>
+      {error && <div className="mb-4 p-3 bg-secondary/10 border border-secondary/30 rounded-xl text-tertiary text-sm">{error}</div>}
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên bài tập *</label>
+          <input required value={title} onChange={e => setTitle(e.target.value)}
+            className="w-full bg-white border border-primary/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            placeholder="VD: Luyện phân tích nhân vật" />
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm (tùy chọn)</label>
+          <select value={workId} onChange={e => setWorkId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none">
+            <option value="">— Không chọn —</option>
+            {works.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Lớp (tùy chọn)</label>
+          <select value={classId} onChange={e => setClassId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none">
+            <option value="">— Giao sau —</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Hạn nộp (tùy chọn)</label>
+          <input type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none" />
+        </div>
+      </div>
+      <div className="space-y-4 mb-6">
+        <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Câu hỏi</label>
+        {questions.map((q, i) => (
+          <div key={i} className="bg-surface-container-low/50 rounded-xl border border-outline-variant/20 p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-primary">Câu {i + 1}</span>
+              <button type="button" onClick={() => onQuestionsChange(questions.filter((_, j) => j !== i))}
+                className="text-red-300 hover:text-tertiary"><span className="material-symbols-outlined text-sm">delete</span></button>
+            </div>
+            <textarea value={q.content} onChange={e => updateQ(i, 'content', e.target.value)} rows={2}
+              placeholder="Nội dung câu hỏi..."
+              className="w-full border border-outline-variant/20 rounded-lg px-3 py-2 text-sm resize-none outline-none focus:border-primary/30" />
+            <div className="flex gap-3 items-center">
+              <select value={q.type} onChange={e => updateQ(i, 'type', e.target.value)}
+                className="text-xs border border-outline-variant/20 rounded px-2 py-1.5 bg-white outline-none">
+                <option value="essay">Tự luận</option>
+                <option value="short_answer">Trả lời ngắn</option>
+                <option value="multiple_choice">Trắc nghiệm</option>
+              </select>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-slate-500">Điểm:</span>
+                <input type="number" min="0.5" max="10" step="0.5" value={q.points}
+                  onChange={e => updateQ(i, 'points', parseFloat(e.target.value) || 1)}
+                  className="w-14 text-xs border border-outline-variant/20 rounded px-2 py-1 text-center bg-white outline-none" />
+              </div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onQuestionsChange([...questions, { content: '', type: 'essay', points: 2, rubric: '' }])}
+          className="w-full py-2.5 border border-dashed border-primary/30 text-primary rounded-xl text-sm font-semibold hover:bg-primary/5 flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-sm">add</span>Thêm câu hỏi
+        </button>
+      </div>
+      <div className="flex justify-end gap-4">
+        <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:text-primary">Hủy</button>
+        <button type="submit" disabled={saving || !title.trim() || validQuestions.length === 0}
+          className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50">
+          <span className="material-symbols-outlined text-sm">{saving ? 'hourglass_empty' : 'save'}</span>
+          {saving ? 'Đang lưu...' : 'Lưu bài tập'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ─── Exam AI Form ─────────────────────────────────────────────────────────────
+
+interface ExamAiFormProps {
+  works: { id: string; title: string }[];
+  classes: { id: string; name: string }[];
+  structure: ExamStructure;
+  onApprove: (title: string, workId?: string, classId?: string, duration?: number) => void;
+  onClose: () => void;
+  loading: boolean;
+}
+
+function ExamAiForm({ works, classes, structure, onApprove, onClose, loading }: ExamAiFormProps) {
+  const [title, setTitle] = useState('');
+  const [workId, setWorkId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [duration, setDuration] = useState(90);
+  const [deadline, setDeadline] = useState('');
+
+  return (
+    <div className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-2 border-secondary/30 shadow-lg animate-[fadeIn_0.2s_ease-out]">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+          </div>
+          <div>
+            <h3 className="font-headline text-xl font-bold text-secondary">AI tạo bài thi</h3>
+            <p className="text-xs text-slate-400">
+              AI tạo đề theo cấu trúc: {structure.part1Name} ({structure.part1Points}đ) + {structure.part2Name} ({structure.part2Points}đ).
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><span className="material-symbols-outlined">close</span></button>
+      </div>
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên đề *</label>
+          <input value={title} onChange={e => setTitle(e.target.value)} required
+            className="w-full bg-white border-2 border-secondary/30 rounded-lg px-4 py-3 text-sm focus:border-primary/40 outline-none"
+            placeholder="VD: Kiểm tra HK1 — Ngữ văn 8" autoFocus />
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm (tùy chọn)</label>
+          <select value={workId} onChange={e => setWorkId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none">
+            <option value="">— Không chọn —</option>
+            {works.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold">Lớp giao bài *</label>
+          <select value={classId} onChange={e => setClassId(e.target.value)} required
+            className="w-full bg-white border-2 border-primary/40 rounded-lg px-4 py-3 text-sm focus:border-primary/50 outline-none">
+            <option value="">— Chọn lớp —</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold">Thời lượng *</label>
+          <select value={duration} onChange={e => setDuration(Number(e.target.value))}
+            className="w-full bg-white border-2 border-primary/40 rounded-lg px-4 py-3 text-sm focus:border-primary/50 outline-none">
+            <option value="45">45 phút</option>
+            <option value="60">60 phút</option>
+            <option value="90">90 phút</option>
+            <option value="120">120 phút</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Hạn nộp (tùy chọn)</label>
+          <input type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none" />
+        </div>
+      </div>
+      {/* Structure reminder */}
+      <div className="bg-secondary/10/50 rounded-xl border border-secondary/20 p-4 mb-6 flex items-center gap-3">
+        <span className="material-symbols-outlined text-tertiary text-lg shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
+        <div className="text-xs text-secondary">
+          <span className="font-bold">Cấu trúc đề thi:</span>{' '}
+          <span className="font-semibold">{structure.part1Name}</span> ({structure.part1Points}đ) — 2 câu đọc hiểu +{' '}
+          <span className="font-semibold">{structure.part2Name}</span> ({structure.part2Points}đ) — 2 câu vừa + 1 câu dài.
+          Cấu trúc có thể chỉnh trong panel bên phải.
+        </div>
+      </div>
+      <div className="flex justify-end gap-4">
+        <button onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:text-primary">Hủy</button>
+        <button disabled={loading || !title.trim() || !classId} onClick={() => onApprove(title.trim(), workId || undefined, classId || undefined, duration)}
+          className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-secondary to-secondary text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50 transition-all">
+          <span className="material-symbols-outlined text-sm">{loading ? 'hourglass_empty' : 'auto_awesome'}</span>
+          {loading ? 'Đang tạo...' : 'Tạo bằng AI'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Exam Manual Form ─────────────────────────────────────────────────────────
+
+interface ExamManualFormFullProps {
+  works: { id: string; title: string }[];
+  classes: { id: string; name: string }[];
+  questions: EditableQuestion[];
+  onQuestionsChange: (q: EditableQuestion[]) => void;
+  onSuccess: () => void;
+  onClose: () => void;
+}
+
+function ExamManualFormFull({ works, classes, questions, onQuestionsChange, onSuccess, onClose }: ExamManualFormFullProps) {
+  const [title, setTitle] = useState('');
+  const [workId, setWorkId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [duration, setDuration] = useState(90);
+  const [deadline, setDeadline] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !classId || validQuestions.length === 0) return;
+    setSaving(true); setError('');
+    try {
+      const res = await authFetch('/api/exams', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim(), workId: workId || undefined, classId, type: 'exam', duration, deadline: deadline || undefined }),
+      });
+      const data = await res.json();
+      if (!data.id) { setError(data.error || 'Lỗi khi tạo.'); setSaving(false); return; }
+      for (const q of validQuestions) {
+        await authFetch('/api/exams', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ examId: data.id, questions: [{ content: q.content.trim(), type: q.type, points: q.points, rubric: q.rubric }] }),
+        });
+      }
+      onSuccess();
+    } catch { setError('Lỗi khi tạo.'); }
+    setSaving(false);
+  };
+
+  const updateQ = (i: number, field: keyof EditableQuestion, val: string | number) => {
+    const next = [...questions]; next[i] = { ...next[i], [field]: val }; onQuestionsChange(next);
+  };
+  const validQuestions = questions.filter(q => q.content.trim());
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-2 border-secondary/30 shadow-lg animate-[fadeIn_0.2s_ease-out]">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>edit</span>
+          </div>
+          <div>
+            <h3 className="font-headline text-xl font-bold text-secondary">Nhập tay bài thi</h3>
+            <p className="text-xs text-slate-400">Tự viết câu hỏi + chọn lớp + thời lượng.</p>
+          </div>
+        </div>
+        <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600"><span className="material-symbols-outlined">close</span></button>
+      </div>
+      {error && <div className="mb-4 p-3 bg-secondary/10 border border-secondary/30 rounded-xl text-tertiary text-sm">{error}</div>}
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên đề *</label>
+          <input required value={title} onChange={e => setTitle(e.target.value)}
+            className="w-full bg-white border-2 border-secondary/30 rounded-lg px-4 py-3 text-sm focus:border-primary/40 outline-none"
+            placeholder="VD: Kiểm tra HK1 — Ngữ văn 8" />
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm (tùy chọn)</label>
+          <select value={workId} onChange={e => setWorkId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none">
+            <option value="">— Không chọn —</option>
+            {works.map(w => <option key={w.id} value={w.id}>{w.title}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold">Lớp giao bài *</label>
+          <select value={classId} onChange={e => setClassId(e.target.value)} required
+            className="w-full bg-white border-2 border-primary/40 rounded-lg px-4 py-3 text-sm focus:border-primary/50 outline-none">
+            <option value="">— Chọn lớp —</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold">Thời lượng *</label>
+          <select value={duration} onChange={e => setDuration(Number(e.target.value))}
+            className="w-full bg-white border-2 border-primary/40 rounded-lg px-4 py-3 text-sm focus:border-primary/50 outline-none">
+            <option value="45">45 phút</option>
+            <option value="60">60 phút</option>
+            <option value="90">90 phút</option>
+            <option value="120">120 phút</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Hạn nộp (tùy chọn)</label>
+          <input type="datetime-local" value={deadline} onChange={e => setDeadline(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none" />
+        </div>
+      </div>
+      <div className="space-y-4 mb-6">
+        <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Câu hỏi</label>
+        {questions.map((q, i) => (
+          <div key={i} className="bg-surface-container-low/50 rounded-xl border border-secondary/20 p-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-secondary">Câu {i + 1}</span>
+              <button type="button" onClick={() => onQuestionsChange(questions.filter((_, j) => j !== i))}
+                className="text-red-300 hover:text-tertiary"><span className="material-symbols-outlined text-sm">delete</span></button>
+            </div>
+            <textarea value={q.content} onChange={e => updateQ(i, 'content', e.target.value)} rows={2}
+              placeholder="Nội dung câu hỏi..."
+              className="w-full border border-secondary/20 rounded-lg px-3 py-2 text-sm resize-none outline-none focus:border-secondary/30" />
+            <div className="flex gap-3 items-center">
+              <select value={q.type} onChange={e => updateQ(i, 'type', e.target.value)}
+                className="text-xs border border-secondary/20 rounded px-2 py-1.5 bg-white outline-none">
+                <option value="essay">Tự luận</option>
+                <option value="short_answer">Trả lời ngắn</option>
+                <option value="multiple_choice">Trắc nghiệm</option>
+              </select>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-slate-500">Điểm:</span>
+                <input type="number" min="0.5" max="10" step="0.5" value={q.points}
+                  onChange={e => updateQ(i, 'points', parseFloat(e.target.value) || 1)}
+                  className="w-14 text-xs border border-secondary/20 rounded px-2 py-1 text-center bg-white outline-none" />
+              </div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onQuestionsChange([...questions, { content: '', type: 'essay', points: 2, rubric: '' }])}
+          className="w-full py-2.5 border border-dashed border-secondary/30 text-tertiary rounded-xl text-sm font-semibold hover:bg-secondary/10 flex items-center justify-center gap-2">
+          <span className="material-symbols-outlined text-sm">add</span>Thêm câu hỏi
+        </button>
+      </div>
+      <div className="flex justify-end gap-4">
+        <button type="button" onClick={onClose} className="px-6 py-3 text-slate-500 font-bold hover:text-primary">Hủy</button>
+        <button type="submit" disabled={saving || !title.trim() || !classId || validQuestions.length === 0}
+          className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-secondary to-secondary text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50">
+          <span className="material-symbols-outlined text-sm">{saving ? 'hourglass_empty' : 'save'}</span>
+          {saving ? 'Đang lưu...' : 'Lưu bài thi'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ─── Manual question editor ───────────────────────────────────────────────────
+
+function ExamManualForm({ questions, onChange }: {
+  questions: EditableQuestion[];
+  onChange: (q: EditableQuestion[]) => void;
+}) {
+  const addQuestion = () => {
+    onChange([...questions, { content: '', type: 'essay', points: 2, rubric: '' }]);
+  };
+  const removeQuestion = (idx: number) => {
+    onChange(questions.filter((_, i) => i !== idx));
+  };
+  const update = (idx: number, field: keyof EditableQuestion, value: string | number) => {
+    const next = [...questions];
+    next[idx] = { ...next[idx], [field]: value };
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-4">
+      {questions.length === 0 && (
+        <p className="text-sm text-slate-400 text-center py-8">Chưa có câu hỏi nào. Nhấn "Thêm câu hỏi" để bắt đầu.</p>
+      )}
+      {questions.map((q, idx) => (
+        <div key={idx} className="bg-white rounded-xl border border-outline-variant/20 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-primary">Câu {idx + 1}</span>
+            <button onClick={() => removeQuestion(idx)} className="text-red-300 hover:text-tertiary transition-colors">
+              <span className="material-symbols-outlined text-sm">delete</span>
+            </button>
+          </div>
+          <textarea
+            value={q.content}
+            onChange={e => update(idx, 'content', e.target.value)}
+            rows={2}
+            placeholder="Nhập nội dung câu hỏi..."
+            className="w-full border border-outline-variant/20 rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary/20 resize-none"
+          />
+          <div className="flex gap-3 items-center">
+            <select value={q.type} onChange={e => update(idx, 'type', e.target.value)}
+              className="text-xs border border-outline-variant/20 rounded px-2 py-1.5 bg-white">
+              <option value="essay">Tự luận</option>
+              <option value="short_answer">Trả lời ngắn</option>
+              <option value="multiple_choice">Trắc nghiệm</option>
+            </select>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-slate-500">Điểm:</span>
+              <input type="number" min="0.5" max="10" step="0.5" value={q.points}
+                onChange={e => update(idx, 'points', parseFloat(e.target.value) || 1)}
+                className="w-14 text-xs border border-outline-variant/20 rounded px-2 py-1 text-center bg-white" />
+            </div>
+          </div>
+          <input value={q.rubric} onChange={e => update(idx, 'rubric', e.target.value)}
+            placeholder="Gợi ý đáp án / rubric (tùy chọn)"
+            className="w-full border border-outline-variant/20 rounded-lg px-3 py-1.5 text-xs focus:ring-1 focus:ring-primary/20 bg-surface-container-low/30" />
+        </div>
+      ))}
+      <button onClick={addQuestion}
+        className="w-full py-2.5 border border-dashed border-primary/30 text-primary rounded-xl text-sm font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-2">
+        <span className="material-symbols-outlined text-sm">add</span>
+        Thêm câu hỏi
+      </button>
+    </div>
+  );
+}
 
 export default function ExamBankPage() {
   const [activeTab, setActiveTab] = useState<Tab>("exercise");
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  // 'create-exercise' | 'create-exam' | false
+  // 'exercise-ai' | 'exercise-manual' | 'exam-ai' | 'exam-manual' | false
+  const [showCreateForm, setShowCreateForm] = useState<'exercise-ai' | 'exercise-manual' | 'exam-ai' | 'exam-manual' | false>(false);
   const [filterClass, setFilterClass] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Exam | null>(null);
   const [publishTarget, setPublishTarget] = useState<Exam | null>(null);
@@ -73,7 +596,7 @@ export default function ExamBankPage() {
     setPublishTarget(null);
 
     try {
-      await fetch('/api/exams', {
+      await authFetch('/api/exams', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: publishTarget.id, status: newStatus }),
@@ -115,12 +638,19 @@ export default function ExamBankPage() {
     setDeleteTarget(null);
 
     try {
-      await fetch(`/api/exams?id=${deletedId}`, { method: 'DELETE' });
-      showToast('Đã xóa đề.', 'success');
+      const res = await authFetch(`/api/exams?id=${deletedId}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Đã xóa đề.', 'success');
+      } else {
+        // Rollback + show error
+        await mutate(`/api/exams${filterClass ? `?classId=${filterClass}` : ''}`);
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Xóa thất bại.', 'error');
+      }
     } catch {
-      // Rollback on failure
+      // Network error — rollback
       await mutate(`/api/exams${filterClass ? `?classId=${filterClass}` : ''}`);
-      showToast('Lỗi khi xóa.', 'error');
+      showToast('Lỗi mạng. Vui lòng thử lại.', 'error');
     } finally {
       setDeletingId(null);
     }
@@ -139,22 +669,57 @@ export default function ExamBankPage() {
     deadline: '',
   });
 
+  // Manual mode state
+  const [createMode, setCreateMode] = useState<CreateMode>('ai');
+  const [manualQuestions, setManualQuestions] = useState<EditableQuestion[]>([
+    { content: '', type: 'essay', points: 2, rubric: '' },
+  ]);
+  const [savingManual, setSavingManual] = useState(false);
+
+  // ── Exam structure (editable, feeds into AI prompt) ─────────────────────
+  const [examStructure, setExamStructure] = useState<ExamStructure>(DEFAULT_STRUCTURE);
+  const [editingStructure, setEditingStructure] = useState(false);
+  const [structDraft, setStructDraft] = useState<ExamStructure>(DEFAULT_STRUCTURE);
+
+  const saveStructure = () => {
+    setExamStructure(structDraft);
+    setEditingStructure(false);
+  };
+  const startEditStructure = () => {
+    setStructDraft(examStructure);
+    setEditingStructure(true);
+  };
+
+  const resetForm = () => {
+    setGenForm({ title: '', work: '', cls: '', duration: 45, deadline: '' });
+    setManualQuestions([{ content: '', type: 'essay', points: 2, rubric: '' }]);
+    setCreateMode('ai');
+    setShowCreateForm(false); // 'quick-ai' | 'full' | false
+    setEditingStructure(false);
+  };
+
   const handleAiGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setAiLoading(true);
     setPreviewData(null);
 
     try {
-      const res = await fetch('/api/ai/exam-preview', {
+      // Determine type from which form is open, not activeTab (which controls the table filter)
+      const formType: Tab = showCreateForm === 'create-exam' ? 'exam'
+        : showCreateForm === 'create-exercise' ? 'exercise'
+        : activeTab;
+
+      const res = await authFetch('/api/ai/exam-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: genForm.title,
           workId: genForm.work || undefined,
           classId: genForm.cls || undefined,
-          type: activeTab,
-          duration: genForm.duration,
+          type: formType,
+          duration: formType === 'exam' ? genForm.duration : undefined,
           deadline: genForm.deadline || undefined,
+          structure: formType === 'exam' ? examStructure : undefined,
         }),
       });
       const data = await res.json();
@@ -178,11 +743,64 @@ export default function ExamBankPage() {
     }
   };
 
+  const handleManualSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!genForm.title.trim()) {
+      showToast('Vui lòng nhập tên đề.', 'error');
+      return;
+    }
+    const validQuestions = manualQuestions.filter(q => q.content.trim());
+    if (validQuestions.length === 0) {
+      showToast('Cần ít nhất 1 câu hỏi có nội dung.', 'error');
+      return;
+    }
+    setSavingManual(true);
+    try {
+      // Step 1: Create exam
+      const res = await authFetch('/api/exams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: genForm.title.trim(),
+          workId: genForm.work || undefined,
+          classId: genForm.cls || undefined,
+          type: showCreateForm === 'create-exam' ? 'exam' : 'exercise',
+          duration: genForm.duration,
+          deadline: genForm.deadline || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!data.id) {
+        showToast(data.error || 'Lỗi khi tạo đề.', 'error');
+        setSavingManual(false);
+        return;
+      }
+      // Step 2: Add each question
+      for (const q of validQuestions) {
+        await authFetch('/api/exams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            examId: data.id,
+            questions: [{ content: q.content.trim(), type: q.type, points: q.points, rubric: q.rubric }],
+          }),
+        });
+      }
+      showToast('Đề đã được tạo thủ công.', 'success');
+      await mutate();
+      resetForm();
+    } catch {
+      showToast('Lỗi khi tạo đề.', 'error');
+    } finally {
+      setSavingManual(false);
+    }
+  };
+
   const handleApprove = async () => {
     if (!previewData) return;
     setModalLoading(true);
     try {
-      const res = await fetch('/api/ai/exam-approve', {
+      const res = await authFetch('/api/ai/exam-approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +828,7 @@ export default function ExamBankPage() {
 
   const handleReject = async () => {
     if (!previewData) return;
-    await fetch('/api/ai/exam-reject', {
+    await authFetch('/api/ai/exam-reject', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ previewId: previewData.previewId }),
@@ -226,7 +844,7 @@ export default function ExamBankPage() {
       {/* Toast */}
       {toastMsg && (
         <div className={`fixed top-6 right-6 z-50 px-5 py-3 rounded-xl text-sm font-bold shadow-lg animate-[fadeIn_0.2s_ease-out] ${
-          toastType === 'success' ? 'bg-secondary text-white' : 'bg-red-500 text-white'
+          toastType === 'success' ? 'bg-secondary text-white' : 'bg-secondary/100 text-white'
         }`}>
           {toastMsg}
         </div>
@@ -238,108 +856,114 @@ export default function ExamBankPage() {
           <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">Ngân hàng Đề</h2>
         </div>
         <div className="flex gap-4">
-          {/* AI Generate Form (inline, no separate form) */}
           <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => setShowCreateForm('exercise-ai')}
             className="flex items-center gap-2 px-6 py-3 border border-primary text-primary hover:bg-primary/5 transition-all rounded-md font-medium active:scale-[0.98]"
           >
-            <span className="material-symbols-outlined">{aiLoading ? 'hourglass_empty' : 'auto_awesome'}</span>
-            {aiLoading ? 'Đang tạo...' : 'AI gợi ý đề'}
+            <span className="material-symbols-outlined">assignment</span>
+            Tạo bài tập
           </button>
           <button
-            onClick={() => setShowCreateForm(!showCreateForm)}
+            onClick={() => setShowCreateForm('exam-ai')}
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-md shadow-lg shadow-primary/10 hover:shadow-primary/20 active:scale-[0.98] transition-all font-medium"
           >
-            <span className="material-symbols-outlined">{showCreateForm ? "close" : "add"}</span>
-            {showCreateForm ? "Đóng" : "Tạo đề mới"}
+            <span className="material-symbols-outlined">quiz</span>
+            Tạo bài thi
           </button>
         </div>
       </div>
 
-      {/* AI Generate Form */}
-      {showCreateForm && (
-        <div className="mb-10 bg-white/80 backdrop-blur-md p-8 rounded-2xl border border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
-          <h3 className="font-headline text-xl font-bold text-primary mb-6">
-            Tạo bài tập / đề thi mới
-          </h3>
-          <form className="grid grid-cols-2 gap-6" onSubmit={handleAiGenerate}>
-            <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tên đề *</label>
-              <input
-                name="title"
-                required
-                value={genForm.title}
-                onChange={e => setGenForm({ ...genForm, title: e.target.value })}
-                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                placeholder="VD: Phân tích nhân vật..."
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Tác phẩm liên quan</label>
-              <select
-                name="work"
-                value={genForm.work}
-                onChange={e => setGenForm({ ...genForm, work: e.target.value })}
-                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">— Không chọn —</option>
-                {works.map((w: { id: string; title: string }) => (
-                  <option key={w.id} value={w.id}>{w.title}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Lớp giao bài</label>
-              <select
-                name="cls"
-                value={genForm.cls}
-                onChange={e => setGenForm({ ...genForm, cls: e.target.value })}
-                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">— Để sau —</option>
-                {classes.map((c: { id: string; name: string }) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Thời lượng</label>
-              <select
-                name="duration"
-                value={genForm.duration}
-                onChange={e => setGenForm({ ...genForm, duration: Number(e.target.value) })}
-                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="15">15 phút</option>
-                <option value="45">45 phút</option>
-                <option value="90">90 phút</option>
-                <option value="120">120 phút</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">Hạn nộp (tùy chọn)</label>
-              <input
-                type="datetime-local"
-                value={genForm.deadline}
-                onChange={e => setGenForm({ ...genForm, deadline: e.target.value })}
-                className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <div className="col-span-2 flex justify-end gap-4 items-end">
-              <button type="button" onClick={() => setShowCreateForm(false)} className="px-6 py-3 text-slate-500 font-bold hover:text-primary">Hủy</button>
-              <button
-                type="submit"
-                disabled={aiLoading || !genForm.title.trim()}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg active:scale-[0.98] transition-all disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-sm">{aiLoading ? 'hourglass_empty' : 'auto_awesome'}</span>
-                {aiLoading ? 'Đang tạo xem trước...' : 'Tạo bằng AI'}
-              </button>
-            </div>
-          </form>
-        </div>
+      {/* ── Exercise AI: chỉ tên + tác phẩm → preview ── */}
+      {showCreateForm === 'exercise-ai' && (
+        <ExerciseAiForm
+          works={works}
+          onApprove={async (title, workId) => {
+            setAiLoading(true);
+            try {
+              const res = await authFetch('/api/ai/exam-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, workId: workId || undefined, type: 'exercise' }),
+              });
+              const data = await res.json();
+              if (data.previewId && data.questions?.length) {
+                setPreviewData(data);
+                setEditableQuestions(data.questions.map((q: { content: string; type: string; points: number; rubric: string }) => ({
+                  content: q.content || '', type: q.type || 'essay', points: q.points || 2, rubric: q.rubric || '',
+                })));
+                setShowPreview(true);
+                setShowCreateForm(false);
+              } else {
+                showToast(data.error || 'AI không tạo được. Thử lại.', 'error');
+              }
+            } catch { showToast('Lỗi khi gọi AI.', 'error');
+            } finally { setAiLoading(false); }
+          }}
+          onClose={() => setShowCreateForm(false)}
+          loading={aiLoading}
+        />
       )}
 
+      {/* ── Exercise Manual: form tùy chỉnh câu hỏi ── */}
+      {showCreateForm === 'exercise-manual' && (
+        <ExerciseManualForm
+          works={works}
+          classes={classes}
+          questions={manualQuestions}
+          onQuestionsChange={setManualQuestions}
+          onSuccess={async () => { showToast('Đã tạo bài tập.', 'success'); await mutate(); resetForm(); }}
+          onClose={() => setShowCreateForm(false)}
+        />
+      )}
+
+      {/* ── Exam AI: tên + tác phẩm + lớp + duration → preview + structure ── */}
+      {showCreateForm === 'exam-ai' && (
+        <ExamAiForm
+          works={works}
+          classes={classes}
+          structure={examStructure}
+          onApprove={async (title, workId, classId, duration) => {
+            setAiLoading(true);
+            try {
+              const res = await authFetch('/api/ai/exam-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  title, workId: workId || undefined,
+                  classId: classId || undefined, type: 'exam',
+                  duration, structure: examStructure,
+                }),
+              });
+              const data = await res.json();
+              if (data.previewId && data.questions?.length) {
+                setPreviewData(data);
+                setEditableQuestions(data.questions.map((q: { content: string; type: string; points: number; rubric: string }) => ({
+                  content: q.content || '', type: q.type || 'essay', points: q.points || 2, rubric: q.rubric || '',
+                })));
+                setShowPreview(true);
+                setShowCreateForm(false);
+              } else {
+                showToast(data.error || 'AI không tạo được. Thử lại.', 'error');
+              }
+            } catch { showToast('Lỗi khi gọi AI.', 'error');
+            } finally { setAiLoading(false); }
+          }}
+          onClose={() => setShowCreateForm(false)}
+          loading={aiLoading}
+        />
+      )}
+
+      {/* ── Exam Manual: form tùy chỉnh câu hỏi + class + duration ── */}
+      {showCreateForm === 'exam-manual' && (
+        <ExamManualFormFull
+          works={works}
+          classes={classes}
+          questions={manualQuestions}
+          onQuestionsChange={setManualQuestions}
+          onSuccess={async () => { showToast('Đã tạo bài thi.', 'success'); await mutate(); resetForm(); }}
+          onClose={() => setShowCreateForm(false)}
+        />
+      )}
       {/* Dashboard Grid */}
       <div className="grid grid-cols-12 gap-8 items-start">
         <div className="col-span-12 lg:col-span-8 space-y-8">
@@ -436,7 +1060,7 @@ export default function ExamBankPage() {
                           <button
                             onClick={() => setDeleteTarget(e)}
                             disabled={deletingId === e.id}
-                            className="px-3 py-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            className="px-3 py-1.5 text-tertiary hover:text-secondary hover:bg-secondary/10 rounded-lg transition-colors disabled:opacity-50"
                           >
                             {deletingId === e.id ? '...' : 'Xóa'}
                           </button>
@@ -526,36 +1150,108 @@ export default function ExamBankPage() {
           )}
         </div>
 
-        {/* Side Panel */}
+        {/* Side Panel — Cấu trúc Đề thi (editable, feeds into AI prompt) */}
         <div className="col-span-12 lg:col-span-4 sticky top-28">
           <div className="bg-white/80 backdrop-blur-md shadow-sm rounded-2xl p-8 border border-outline-variant/15 relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-xl font-headline font-bold text-primary">Cấu trúc Đề thi</h3>
-                <span className="text-[10px] font-bold bg-primary/5 text-primary px-2 py-1 rounded">MẪU CHUẨN</span>
-              </div>
-              <div className="space-y-8">
-                <div className="relative pl-6 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-secondary/20">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-headline font-bold text-secondary text-sm uppercase tracking-wider">Phần I — Đọc hiểu</h4>
-                    <span className="text-xs font-bold text-slate-500">3-4 điểm</span>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-headline font-bold text-primary">Cấu trúc Đề thi</h3>
+              {!editingStructure ? (
+                <button
+                  onClick={startEditStructure}
+                  className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-sm">edit</span> Chỉnh sửa
+                </button>
+              ) : (
+                <span className="text-[10px] font-bold bg-tertiary/10 text-tertiary px-2 py-1 rounded">ĐANG SỬA</span>
+              )}
+            </div>
+
+            {!editingStructure ? (
+              /* Read-only display */
+              <div className="space-y-6">
+                <div className="relative pl-5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-secondary/40 rounded-full">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-headline font-bold text-secondary text-sm">Phần I — {examStructure.part1Name}</h4>
+                    <span className="text-xs font-bold text-secondary">{examStructure.part1Points} điểm</span>
                   </div>
-                  <ul className="space-y-3 text-sm text-slate-600 leading-relaxed">
-                    <li className="flex gap-3"><span className="text-primary font-bold">•</span>Văn bản ngoài SGK hoặc đoạn trích tiêu biểu.</li>
-                    <li className="flex gap-3"><span className="text-primary font-bold">•</span>4 câu hỏi nhận biết, thông hiểu, vận dụng.</li>
-                  </ul>
+                  <p className="text-xs text-slate-400">Đọc hiểu văn bản, nhận biết, thông hiểu, vận dụng.</p>
                 </div>
-                <div className="relative pl-6 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-primary/20">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-headline font-bold text-primary text-sm uppercase tracking-wider">Phần II — Làm văn</h4>
-                    <span className="text-xs font-bold text-slate-500">6-7 điểm</span>
+                <div className="relative pl-5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-primary/40 rounded-full">
+                  <div className="flex justify-between items-center mb-1">
+                    <h4 className="font-headline font-bold text-primary text-sm">Phần II — {examStructure.part2Name}</h4>
+                    <span className="text-xs font-bold text-primary">{examStructure.part2Points} điểm</span>
                   </div>
+                  <p className="text-xs text-slate-400">Nghị luận văn học, viết bài văn hoàn chỉnh.</p>
+                </div>
+                <div className="pt-2 border-t border-outline-variant/20">
+                  <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                    Cấu trúc này được truyền vào prompt AI khi tạo đề thi.
+                  </p>
                 </div>
               </div>
-              <button className="w-full mt-10 py-4 border border-dashed border-outline-variant hover:border-primary hover:text-primary transition-all rounded-xl text-sm font-bold text-slate-400 flex items-center justify-center gap-2 active:scale-[0.98]">
-                <span className="material-symbols-outlined text-sm">settings_suggest</span>
-                Tùy chỉnh cấu trúc
-              </button>
+            ) : (
+              /* Editable form */
+              <div className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 1 — Tên</label>
+                  <input
+                    value={structDraft.part1Name}
+                    onChange={e => setStructDraft({ ...structDraft, part1Name: e.target.value })}
+                    className="w-full border border-secondary/40 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-secondary/20 focus:border-secondary outline-none"
+                    placeholder="VD: Đọc hiểu"
+                  />
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 1 — Điểm</label>
+                  <input
+                    type="number" min="1" max="10" step="0.5"
+                    value={structDraft.part1Points}
+                    onChange={e => setStructDraft({ ...structDraft, part1Points: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-secondary/40 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-secondary/20 focus:border-secondary outline-none"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 2 — Tên</label>
+                  <input
+                    value={structDraft.part2Name}
+                    onChange={e => setStructDraft({ ...structDraft, part2Name: e.target.value })}
+                    className="w-full border border-primary/40 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    placeholder="VD: Làm văn"
+                  />
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 2 — Điểm</label>
+                  <input
+                    type="number" min="1" max="10" step="0.5"
+                    value={structDraft.part2Points}
+                    onChange={e => setStructDraft({ ...structDraft, part2Points: parseFloat(e.target.value) || 0 })}
+                    className="w-full border border-primary/40 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setEditingStructure(false)}
+                    className="flex-1 border border-outline-variant py-2 rounded-xl text-sm font-semibold hover:bg-surface-container-low transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveStructure}
+                    className="flex-1 bg-primary text-white py-2 rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors"
+                  >
+                    Lưu
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Prompt preview — shows current AI prompt snippet */}
+          <div className="mt-4 bg-surface-container-low/60 rounded-xl p-4 border border-outline-variant/10">
+            <p className="text-[10px] font-bold text-outline uppercase mb-2">AI Prompt Preview</p>
+            <div className="text-[10px] text-slate-500 font-mono leading-relaxed space-y-1">
+              <p><span className="text-secondary font-bold">Phần I:</span> {examStructure.part1Name} ({examStructure.part1Points}đ) — 2 câu ngắn (trắc nghiệm/ngắn)</p>
+              <p><span className="text-primary font-bold">Phần II:</span> {examStructure.part2Name} ({examStructure.part2Points}đ) — 1 câu dài (nghị luận)</p>
             </div>
           </div>
         </div>

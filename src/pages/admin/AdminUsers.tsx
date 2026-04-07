@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import type { User } from '../../types/api';
 
 type RoleFilter = 'all' | 'teacher' | 'admin';
@@ -61,7 +61,7 @@ export default function AdminUsersPage() {
     try {
       const method = editUser ? 'PUT' : 'POST';
       const body = editUser ? { ...form, id: editUser.id } : form;
-      const res = await fetch('/api/admin/users', {
+      const res = await authFetch('/api/admin/users', {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -82,15 +82,17 @@ export default function AdminUsersPage() {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/users?id=${confirmDeleteId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/users?id=${confirmDeleteId}`, { method: 'DELETE' });
       if (res.ok) {
         mutate();
-        setConfirmDeleteId(null);
       } else {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || 'Xóa thất bại');
+        alert(err.error || 'Xóa thất bại.');
       }
+    } catch {
+      alert('Lỗi mạng. Vui lòng thử lại.');
     } finally {
+      setConfirmDeleteId(null);
       setDeleting(false);
     }
   };
@@ -284,7 +286,7 @@ export default function AdminUsersPage() {
               setResetSuccess('');
               setResetting(true);
               try {
-                const res = await fetch('/api/admin/users', {
+                const res = await authFetch('/api/admin/users', {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ id: resetUser.id, password: resetPassword }),

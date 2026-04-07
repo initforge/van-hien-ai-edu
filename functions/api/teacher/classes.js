@@ -1,6 +1,7 @@
 /**
  * GET  /api/teacher/classes  — list classes with student + submission counts
  * POST /api/teacher/classes  — create class
+ * PATCH/DELETE handled in classes/[id].js
  */
 import { cachedJson } from '../_cache.js';
 import { jsonError } from '../_utils.js';
@@ -66,7 +67,7 @@ export async function onRequestPost({ request, env, data }) {
     await env.DB.prepare(
       `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(crypto.randomUUID(), user.id, user.name, user.role, 'class_created', 'class', id,
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, 'create_class', 'class', id,
            JSON.stringify({ name: name.trim(), gradeLevel }), now).run();
 
     return new Response(JSON.stringify({ id, name: name.trim(), gradeLevel, inviteCode, createdAt: now }), {

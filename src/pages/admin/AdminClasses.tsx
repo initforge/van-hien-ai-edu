@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import type { Class, User } from '../../types/api';
 
 const GRADE_LABELS: Record<number, string> = {
@@ -88,7 +88,7 @@ export default function AdminClassesPage() {
       const payload = editClass
         ? { id: editClass.id, name: form.name, teacherId: form.teacherId, grade }
         : { name: form.name, teacherId: form.teacherId, grade };
-      const res = await fetch('/api/admin/classes', {
+      const res = await authFetch('/api/admin/classes', {
         method: editClass ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -110,11 +110,16 @@ export default function AdminClassesPage() {
     if (!confirmDeleteId) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/classes?id=${confirmDeleteId}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/admin/classes?id=${confirmDeleteId}`, { method: 'DELETE' });
       if (res.ok) {
         mutateClasses();
         if (expandedId === confirmDeleteId) setExpandedId(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Xóa thất bại.');
       }
+    } catch {
+      alert('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setConfirmDeleteId(null);
       setDeleting(false);
@@ -436,7 +441,7 @@ function ClassDetailPanel({ data, onRefresh, classId }: {
                 <button
                   onClick={async () => {
                     if (!confirm('Tái tạo mã lớp? Mã cũ sẽ không còn hoạt động.')) return;
-                    const res = await fetch('/api/admin/classes', {
+                    const res = await authFetch('/api/admin/classes', {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ id: classId, regenerateInvite: true }),

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import useSWR from 'swr';
 import { RUBRIC_DEFAULT } from '../../constants/grading';
 import type { RubricRow } from '../../constants/grading';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import { SUBMISSION_STATUS } from '../../lib/utils';
 
 type Step = 'class' | 'exam' | 'student' | 'grading';
@@ -147,11 +147,16 @@ export default function GradingPage() {
     setAiGrading(true);
     setAiResult(null);
     try {
-      const res = await fetch('/api/ai/grade-preview', {
+      const res = await authFetch('/api/ai/grade-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId: selectedStudent }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Chấm điểm thất bại.');
+        return;
+      }
       const data = await res.json();
       if (data.success && data.aiScore != null) {
         setAiResult({
@@ -171,11 +176,12 @@ export default function GradingPage() {
           const avg = data.aiScore / rubricScores.length;
           setRubricScores(prev => prev.map(r => ({ ...r, ai: avg.toFixed(1) })));
         }
-      } else if (data.error) {
-        alert(data.error);
+      } else {
+        alert(data.error || 'Chấm điểm thất bại.');
       }
     } catch (e) {
       console.error('AI grading failed:', e);
+      alert('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setAiGrading(false);
     }
@@ -200,7 +206,7 @@ export default function GradingPage() {
     }
 
     try {
-      const res = await fetch('/api/submissions', {
+      const res = await authFetch('/api/submissions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
