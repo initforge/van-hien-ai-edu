@@ -280,6 +280,50 @@ async function checkW6(env, teacherId) {
   return warnings;
 }
 
+// ─── Shared warning computation (called by warnings.js GET and submissions POST) ──
+
+/**
+ * Run all warning checks for a teacher and persist new ones.
+ * Call this after a submission is created (non-blocking).
+ */
+export async function computeWarningsForTeacher(env, teacherId) {
+  try {
+    const recompute = true; // always recompute when triggered
+    const [w1w2, w3, w4w5, w6] = await Promise.all([
+      checkW1W2(env, teacherId),
+      checkW3(env, teacherId),
+      checkW4W5(env, teacherId),
+      checkW6(env, teacherId),
+    ]);
+
+    const newWarnings = [...w1w2, ...w3, ...w4w5, ...w6];
+    if (newWarnings.length) {
+      const stmt = env.DB.prepare(
+        `INSERT OR IGNORE INTO ai_warnings
+          (id, teacher_id, type, severity, student_id, student_name, class_id, class_name,
+           submission_id, message, metadata, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+      );
+      for (const w of newWarnings) {
+        await stmt.bind(
+          crypto.randomUUID(), teacherId, w.type, w.severity,
+          w.studentId, w.studentName,
+          w.classId, w.className,
+          w.submissionId || null,
+          w.message, w.metadata || null
+        ).run().catch(() => {});
+      }
+    }
+    // Invalidate KV cache so next GET gets fresh data
+    try {
+      const { kvDel } = await import('./_kv.js');
+      await kvDel(env.VANHIEN_KV, KV_CACHE_KEY(teacherId));
+    } catch (_) {}
+  } catch (e) {
+    console.error('computeWarningsForTeacher error:', e);
+  }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function onRequestGet({ env, data, request }) {
@@ -299,31 +343,8 @@ export async function onRequestGet({ env, data, request }) {
       }
     }
 
-    const [w1w2, w3, w4w5, w6] = await Promise.all([
-      checkW1W2(env, user.id),
-      checkW3(env, user.id),
-      checkW4W5(env, user.id),
-      checkW6(env, user.id),
-    ]);
-
-    const newWarnings = [...w1w2, ...w3, ...w4w5, ...w6];
-    if (newWarnings.length) {
-      const stmt = env.DB.prepare(
-        `INSERT OR IGNORE INTO ai_warnings
-          (id, teacher_id, type, severity, student_id, student_name, class_id, class_name,
-           submission_id, message, metadata, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
-      );
-      for (const w of newWarnings) {
-        await stmt.bind(
-          crypto.randomUUID(), user.id, w.type, w.severity,
-          w.studentId, w.studentName,
-          w.classId, w.className,
-          w.submissionId || null,
-          w.message, w.metadata || null
-        ).run().catch(() => {});
-      }
-    }
+// Use shared computation + cache
+    await computeWarningsForTeacher(env, user.id);
 
     const rows = await env.DB.prepare(
       `SELECT id, type, severity, student_id AS studentId, student_name, class_id AS classId, class_name, submission_id AS submissionId,
@@ -334,7 +355,7 @@ export async function onRequestGet({ env, data, request }) {
     ).bind(user.id).all();
 
     const warnings = rows.results || [];
-    const counts = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0, W6: 0, W7: 0 };
+    const counts = { W1: 0, W2: 0, W3: 0, W4: 0, W5: 0, W6: 0 };
     for (const w of warnings) {
       if (w.type in counts) counts[w.type]++;
     }

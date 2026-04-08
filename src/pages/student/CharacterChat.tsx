@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import useSWR from "swr";
-import { fetcher } from "../../lib/fetcher";
+import { fetcher, authFetch } from "../../lib/fetcher";
 import type { Character } from "../../types/api";
 
 type Step = "select-work" | "select-character" | "chatting";
@@ -55,7 +55,7 @@ export default function CharacterChatPage() {
   const handleSelectChar = async (id: string) => {
     setSelectedChar(id);
     try {
-      const res = await fetch("/api/chat", {
+      const res = await authFetch("api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [], characterId: id }),
@@ -64,6 +64,7 @@ export default function CharacterChatPage() {
         setThreadId(res.headers.get("X-Thread-Id")!);
       }
     } catch (_) { /* non-critical: thread creation optional */ }
+    // Move to chat view only AFTER thread init attempt
     setStep("chatting");
   };
 
@@ -81,20 +82,27 @@ export default function CharacterChatPage() {
     if (!input.trim() || !selectedChar) return;
     const time = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
     const userMsg: Message = { role: "user", text: input.trim(), time };
-    const aiMsg: Message = { message: "ai", text: "", time } as Message;
-    setMessages(prev => {
-      messagesRef.current = [...prev, userMsg, aiMsg];
-      return messagesRef.current;
-    });
+    const aiMsg: Message = { role: "ai", text: "", time };
+
+    // Snapshot messages BEFORE state update so authFetch body is never stale
+    const currentSnapshot = [...messages, userMsg, aiMsg];
+    messagesRef.current = currentSnapshot;
+    setMessages(currentSnapshot);
     setInput("");
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await authFetch("api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMsg], characterId: selectedChar, threadId }),
+        body: JSON.stringify({ messages: currentSnapshot.slice(0, -1), characterId: selectedChar, threadId }),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
       if (!res.body) throw new Error("No response body");
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -102,27 +110,33 @@ export default function CharacterChatPage() {
         const { value, done: d } = await reader.read();
         done = d;
         if (value) {
-          const chunk = decoder.decode(value, { stream: true });
+          const chunk = decoder.decode(value, { stream: !done });
           setMessages(prev => {
-            const base = prev.length > 0 ? prev : messagesRef.current;
-            const msgs = [...base];
-            if (msgs.length > 0) {
-              msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: msgs[msgs.length - 1].text + chunk };
-            }
-            messagesRef.current = msgs;
-            return msgs;
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              text: updated[updated.length - 1].text + chunk,
+            };
+            messagesRef.current = updated;
+            return updated;
           });
         }
       }
-    } catch {
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Không nhận được phản hồi";
       setMessages(prev => {
-        const base = prev.length > 0 ? prev : messagesRef.current;
-        const msgs = [...base];
-        if (msgs.length > 0) {
-          msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], text: "(Lỗi: Không nhận được phản hồi. Vui lòng thử lại.)" };
+        if (prev.length === 0) return prev;
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === "ai") {
+          updated[updated.length - 1] = {
+            ...last,
+            text: `(Lỗi: ${errorMsg}. Vui lòng thử lại.)`,
+          };
         }
-        messagesRef.current = msgs;
-        return msgs;
+        messagesRef.current = updated;
+        return updated;
       });
     }
   };

@@ -110,6 +110,7 @@ export async function onRequestPost({ request, env, data }) {
       `\n\nQuy tắc: điểm trên thang 10, chỉ trả JSON.`;
 
     const { text: aiResponse } = await aiCall(
+      env,
       '@cf/google/gemma-3-12b-it',
       { systemPrompt, messages: [{ role: 'user', content: questionsText }], maxTokens: 1024, temperature: 0.2 }
     );

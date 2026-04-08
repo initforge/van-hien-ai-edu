@@ -73,7 +73,6 @@ export interface Work {
   createdAt: string;
   // Extended fields (admin/teacher)
   analysisStatus?: 'none' | 'processing' | 'done';
-  chunkCount?: number;
   wordCount?: number;
   fileName?: string;
 }
@@ -96,19 +95,8 @@ export interface WorkAnalysis {
   updatedAt: string;
 }
 
-export interface WorkChunk {
-  id: string;
-  workId: string;
-  sequence: number;
-  heading: string | null;
-  content: string;
-  summary: string | null;
-  createdAt: string;
-}
-
 export interface WorkWithAnalysis extends Work {
   analysis?: WorkAnalysis[];
-  chunks?: WorkChunk[];
 }
 
 // ─── Exams ─────────────────────────────────────────────────────────────────────

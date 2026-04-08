@@ -15,7 +15,7 @@ async function getCharacterPrompt(env, characterId) {
             w.title AS workTitle, w.author
      FROM characters c
      LEFT JOIN works w ON c.work_id = w.id
-     WHERE c.name = ? AND c.active = 1`
+     WHERE c.id = ? AND c.active = 1`
   ).bind(characterId).first();
 
   if (!row) {
@@ -26,38 +26,39 @@ async function getCharacterPrompt(env, characterId) {
     };
   }
 
-  // Load structured work analysis
+  // Load FULL work analysis: summary + characters + themes + art_features + context + content_value
   const analysis = row.work_id ? await getWorkAnalysis(env.DB, row.work_id) : {};
-  const summary    = analysis.summary     || '';
-  const chars      = analysis.characters  || '';
-  const themes     = analysis.themes      || '';
-  const context    = analysis.context     || '';
-  const artFeatures = analysis.art_features || '';
+  const summary     = analysis.summary       || '';
+  const chars       = analysis.characters   || '';
+  const themes      = analysis.themes        || '';
+  const context     = analysis.context       || '';
+  const artFeatures  = analysis.art_features  || '';
   const contentValue = analysis.content_value || '';
 
   const workContext = row.workTitle
     ? [
-        `\n\nTác phẩm: "${row.workTitle}" của ${row.author || '?'}`,
-        summary       && `Tóm tắt:\n${summary}`,
-        chars         && `Phân tích nhân vật trong tác phẩm:\n${chars}`,
-        themes        && `Chủ đề:\n${themes}`,
-        artFeatures   && `Đặc sắc nghệ thuật:\n${artFeatures}`,
-        contentValue  && `Giá trị nội dung:\n${contentValue}`,
-        context       && `Bối cảnh:\n${context}`,
+        `📖 Tác phẩm: "${row.workTitle}" của ${row.author || '?'}.`,
+        summary      && `📝 Tóm tắt tác phẩm:\n${summary}`,
+        chars        && `👤 Phân tích nhân vật trong tác phẩm:\n${chars}`,
+        themes       && `💡 Chủ đề và thông điệp:\n${themes}`,
+        artFeatures  && `✨ Đặc sắc nghệ thuật:\n${artFeatures}`,
+        contentValue && `🌿 Giá trị nội dung:\n${contentValue}`,
+        context      && `🕰️ Bối cảnh ra đời:\n${context}`,
       ].filter(Boolean).join('\n')
     : '';
 
   const charContext = row.personality
-    ? `\nTính cách: ${row.personality}`
+    ? `🎭 Tính cách nhân vật: ${row.personality}`
     : '';
 
   // If DB has explicit system_prompt, use it; otherwise auto-generate
   const autoPrompt =
-    `Bạn là nhân vật "${row.name}" trong văn học Việt Nam.` +
-    `${charContext}` +
-    `${workContext}` +
-    `\n\nHãy hóa thân hoàn toàn vào nhân vật, trả lời bằng tiếng Việt, giữ đúng giọng điệu và tính cách. ` +
-    `Không tiết lộ rằng bạn là AI. Nếu câu hỏi ngoài phạm vi tác phẩm, hãy trả lời một cách tự nhiên như nhân vật đó.`;
+    `Bạn là nhân vật "${row.name}" trong văn học Việt Nam.\n` +
+    (charContext ? `${charContext}\n` : '') +
+    (workContext ? `${workContext}\n` : '') +
+    `\nHãy hóa thân hoàn toàn vào nhân vật này. Trả lời bằng tiếng Việt, giữ đúng giọng điệu, ` +
+    `tính cách, suy nghĩ và hành động của nhân vật. ` +
+    `Không tiết lộ rằng bạn là AI. Nếu câu hỏi ngoài phạm vi tác phẩm, hãy trả lời tự nhiên như nhân vật đó.`;
 
   return {
     prompt: row.system_prompt?.trim() ? row.system_prompt : autoPrompt,
@@ -92,14 +93,15 @@ export async function onRequestPost({ request, data, env }) {
 
       if (user.role === 'teacher') {
         const teacherChar = await env.DB.prepare(
-          `SELECT id FROM characters WHERE name = ? AND teacher_id = ? LIMIT 1`
+          `SELECT id FROM characters WHERE id = ? AND teacher_id = ? LIMIT 1`
         ).bind(characterId, user.id).first();
         authorized = !!teacherChar;
       } else {
+        // Student: character must exist, be active, and its work must have analysis done
         const studentChar = await env.DB.prepare(
           `SELECT c.id FROM characters c
            JOIN works w ON c.work_id = w.id
-           WHERE c.name = ? AND c.active = 1 AND w.analysis_status = 'done' LIMIT 1`
+           WHERE c.id = ? AND c.active = 1 AND w.analysis_status = 'done' LIMIT 1`
         ).bind(characterId).first();
         authorized = !!studentChar;
       }
@@ -136,39 +138,35 @@ export async function onRequestPost({ request, data, env }) {
     }));
 
     // ── AI streaming response ──────────────────────────────────────────────
-    const { stream: aiStreamResp, fullText: fullTextPromise, inputTokens } =
-      aiStream('@cf/meta-llama/llama-3.1-8b-instruct', {
+    // Use fullTextPromise (already built inside aiStream) for DB persistence
+    // after stream is fully consumed — no tee() needed (CF Workers ReadableStream
+    // tee() is unreliable for manually-constructed streams).
+    const { stream: httpStream, fullText: fullTextPromise, inputTokens } =
+      aiStream(env, '@cf/google/gemma-3-12b-it', {
         systemPrompt: charPrompt.prompt,
         messages: recentMessages,
-        maxTokens: 512,
+        maxTokens: 768,
         temperature: 0.8,
       }, 'chatbot');
 
-    // ── Split stream: HTTP response + DB persistence ─────────────────────────
-    // Use tee() to avoid double-copying chunks through a wrapper ReadableStream.
-    const [forResponse, _forPersistence] = aiStreamResp.tee();
-
-    // ── After stream completes: persist AI reply to DB ──────────────────────
-    // Detached — non-blocking. Errors logged but don't affect the HTTP response.
-    const aiTimestamp = new Date().toISOString();
-    fullTextPromise.then(async (fullText) => {
-      if (!fullText || fullText.trim().length < 2) return;
+    // ── Persist AI response to DB after stream fully drains ───────────────
+    fullTextPromise.then(async (fullTextForDb) => {
+      if (!fullTextForDb || fullTextForDb.trim().length < 2) return;
       try {
+        const aiTimestamp = new Date().toISOString();
         await env.DB.prepare(
           `INSERT INTO chat_messages (id, thread_id, role, content, created_at)
            VALUES (?, ?, 'ai', ?, ?)`
-        ).bind(crypto.randomUUID(), threadIdToUse, fullText, aiTimestamp).run();
-
-        const outputTokens = estimateTokens(fullText);
-        await logTokenUsage(env, user.id, 'chatbot', `Chat: ${characterId || 'unknown'}`, inputTokens, outputTokens);
+        ).bind(crypto.randomUUID(), threadIdToUse, fullTextForDb.trim(), aiTimestamp).run();
+        const outputTokens = estimateTokens(fullTextForDb.trim());
+        await logTokenUsage(env, user.id, 'chatbot',
+          `Chat: ${characterId || 'unknown'}`, inputTokens, outputTokens);
       } catch (e) {
-        console.error('persist ai message failed:', e);
+        console.error('persist AI response failed:', e);
       }
-    }).catch(err => {
-      console.error('AI response unavailable:', err);
-    });
+    }).catch(e => { console.error('fullTextPromise rejected:', e); });
 
-    return new Response(forResponse, {
+    return new Response(httpStream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',

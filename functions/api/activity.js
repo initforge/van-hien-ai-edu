@@ -18,62 +18,46 @@ export async function onRequestGet({ env, data, request }) {
     const startDate = url.searchParams.get('startDate') || '';
     const endDate = url.searchParams.get('endDate') || '';
 
-    // Build parameterized filter
-    const binds = [user.id, user.id];
-    let actionClause = '';
-    let dateClause = '';
-    if (actionFilter) { actionClause = 'AND action = ?'; binds.push(actionFilter); }
-    if (startDate && endDate) {
-      dateClause = 'AND created_at >= ? AND created_at <= ?';
-      binds.push(startDate, endDate);
-    } else if (startDate) {
-      dateClause = 'AND created_at >= ?';
-      binds.push(startDate);
-    }
-
-    const studentBinds = [user.id, ...(actionFilter ? [actionFilter] : []), ...(startDate && endDate ? [startDate, endDate] : startDate ? [startDate] : [])];
-    const teacherBinds = [user.id, ...(actionFilter ? [actionFilter] : []), ...(startDate && endDate ? [startDate, endDate] : startDate ? [startDate] : [])];
+    // Build parameterized WHERE clauses (applied identically to both subqueries)
+    // created_at stored as UTC; convert to local (+07:00) for comparison
+    const tz = '+07:00';
+    const studentWhere = (b) => {
+      let sql = `user_role = 'student' AND user_id IN (SELECT student_id FROM class_students cs2 JOIN classes c2 ON c2.id = cs2.class_id WHERE c2.teacher_id = ?)`;
+      b.push(user.id);
+      if (actionFilter) { sql += ' AND action = ?'; b.push(actionFilter); }
+      if (startDate && endDate) { sql += ` AND datetime(created_at, '${tz}') >= ? AND datetime(created_at, '${tz}') <= ?`; b.push(startDate + 'T00:00:00', endDate + 'T23:59:59'); }
+      else if (startDate) { sql += ` AND datetime(created_at, '${tz}') >= ?`; b.push(startDate + 'T00:00:00'); }
+      return sql;
+    };
+    const teacherWhere = (b) => {
+      let sql = 'user_id = ? AND user_role = \'teacher\'';
+      b.push(user.id);
+      if (actionFilter) { sql += ' AND action = ?'; b.push(actionFilter); }
+      if (startDate && endDate) { sql += ` AND datetime(created_at, '${tz}') >= ? AND datetime(created_at, '${tz}') <= ?`; b.push(startDate + 'T00:00:00', endDate + 'T23:59:59'); }
+      else if (startDate) { sql += ` AND datetime(created_at, '${tz}') >= ?`; b.push(startDate + 'T00:00:00'); }
+      return sql;
+    };
 
     // Count
-    const countQuery = `
-      SELECT COUNT(*) AS total FROM (
-        SELECT 1 FROM activity_logs
-        WHERE user_role = 'student'
-          AND user_id IN (SELECT student_id FROM class_students cs2 JOIN classes c2 ON c2.id = cs2.class_id WHERE c2.teacher_id = ?)
-          ${actionClause}
-          ${dateClause}
-        UNION ALL
-        SELECT 1 FROM activity_logs
-        WHERE user_id = ? AND user_role = 'teacher'
-          ${actionClause}
-          ${dateClause}
-      )
-    `;
-    const countBinds = [...studentBinds, ...teacherBinds];
-    const countResult = await env.DB.prepare(countQuery).bind(...countBinds).first().catch(e => ({ total: 0 }));
+    const countBinds = [];
+    const countQuery =
+      `SELECT COUNT(*) AS total FROM (` +
+      `SELECT 1 FROM activity_logs WHERE ${studentWhere(countBinds)}` +
+      ` UNION ALL ` +
+      `SELECT 1 FROM activity_logs WHERE ${teacherWhere(countBinds)}` +
+      `)`;
+    const countResult = await env.DB.prepare(countQuery).bind(...countBinds).first().catch(() => ({ total: 0 }));
 
-    // Rows
-    const rowsQuery = `
-      SELECT id, user_id, user_name, user_role, action, target_type, target_id, details, created_at
-      FROM (
-        SELECT id, user_id, user_name, user_role, action, target_type, target_id, details, created_at
-        FROM activity_logs
-        WHERE user_role = 'student'
-          AND user_id IN (SELECT student_id FROM class_students cs3 JOIN classes c3 ON c3.id = cs3.class_id WHERE c3.teacher_id = ?)
-          ${actionClause}
-          ${dateClause}
-        UNION ALL
-        SELECT id, user_id, user_name, user_role, action, target_type, target_id, details, created_at
-        FROM activity_logs
-        WHERE user_id = ? AND user_role = 'teacher'
-          ${actionClause}
-          ${dateClause}
-      )
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    const rowsBinds = [...countBinds, limit, offset];
-    const rowsResult = await env.DB.prepare(rowsQuery).bind(...rowsBinds).all().catch(e => ({ results: [] }));
+    // Rows — bind same params twice (once per subquery), then limit/offset
+    const rowsBinds = [];
+    const rowsQuery =
+      `SELECT * FROM (` +
+      `SELECT id, user_id, user_name, user_role, action, target_type, target_id, details, datetime(created_at, '+07:00') AS created_at FROM activity_logs WHERE ${studentWhere(rowsBinds)}` +
+      ` UNION ALL ` +
+      `SELECT id, user_id, user_name, user_role, action, target_type, target_id, details, datetime(created_at, '+07:00') AS created_at FROM activity_logs WHERE ${teacherWhere(rowsBinds)}` +
+      `) ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+    rowsBinds.push(limit, offset);
+    const rowsResult = await env.DB.prepare(rowsQuery).bind(...rowsBinds).all().catch(() => ({ results: [] }));
     const rows = rowsResult?.results || [];
 
     const activities = rows.map(row => {

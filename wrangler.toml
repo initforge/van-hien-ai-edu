@@ -14,5 +14,11 @@ database_id = "de087f62-62c6-4896-8646-f70aa9fcbc72"
 binding = "VANHIEN_KV"
 id = "1527de16154a4bf3a1746d541f91a082"
 
+# Workers AI binding — requires AI enabled in Cloudflare Dashboard
+# Pages > [project] > Settings > Functions > Bindings > Add binding > AI
+# Model availability: https://developers.cloudflare.com/workers-ai/models
+[ai]
+binding = "AI"
+
 # Cron: configure via Cloudflare Dashboard > Pages > Functions > Triggers > Cron
 # Or use: wrangler pages env production trigger cron "0 7 * * *"

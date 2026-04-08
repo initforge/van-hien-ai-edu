@@ -8,20 +8,33 @@ const ACTIONS = [
   'create_user', 'update_user', 'delete_user',
   'create_class', 'update_class', 'delete_class',
   'reset_password',
+  'work_created', 'character_created', 'storyline_created',
+  'student_registered', 'student_joined',
+  'exam_published', 'submission_submitted', 'grading_returned',
+  'ai_exam_approved',
 ] as const;
 type Action = typeof ACTIONS[number];
 
 const ACTION_META: Record<string, { label: string; color: string; bg: string }> = {
-  all:           { label: 'Tất cả',      color: '#326286', bg: 'bg-[#326286]/10' },
-  login:          { label: 'Đăng nhập',   color: '#7c3aed', bg: 'bg-purple-100' },
-  logout:         { label: 'Đăng xuất',   color: '#6b7280', bg: 'bg-gray-100' },
-  create_user:    { label: 'Tạo user',    color: '#16a34a', bg: 'bg-green-100' },
-  update_user:    { label: 'Sửa user',    color: '#2563eb', bg: 'bg-blue-100' },
-  delete_user:    { label: 'Xóa user',    color: '#dc2626', bg: 'bg-red-100' },
-  create_class:   { label: 'Tạo lớp',     color: '#16a34a', bg: 'bg-green-100' },
-  update_class:   { label: 'Sửa lớp',     color: '#2563eb', bg: 'bg-blue-100' },
-  delete_class:   { label: 'Xóa lớp',     color: '#dc2626', bg: 'bg-red-100' },
-  reset_password: { label: 'Đặt lại MK',  color: '#d97706', bg: 'bg-amber-100' },
+  all:           { label: 'Tất cả',     color: '#326286', bg: 'bg-[#326286]/10' },
+  login:          { label: 'Đăng nhập',  color: '#7c3aed', bg: 'bg-purple-100' },
+  logout:         { label: 'Đăng xuất',  color: '#6b7280', bg: 'bg-gray-100' },
+  create_user:    { label: 'Tạo user',   color: '#16a34a', bg: 'bg-green-100' },
+  update_user:    { label: 'Sửa user',   color: '#2563eb', bg: 'bg-blue-100' },
+  delete_user:    { label: 'Xóa user',   color: '#dc2626', bg: 'bg-red-100' },
+  create_class:   { label: 'Tạo lớp',    color: '#16a34a', bg: 'bg-green-100' },
+  update_class:   { label: 'Sửa lớp',    color: '#2563eb', bg: 'bg-blue-100' },
+  delete_class:   { label: 'Xóa lớp',    color: '#dc2626', bg: 'bg-red-100' },
+  reset_password: { label: 'Đặt lại MK', color: '#d97706', bg: 'bg-amber-100' },
+  work_created:   { label: 'Tạo tác phẩm', color: '#16a34a', bg: 'bg-green-100' },
+  character_created: { label: 'Tạo nhân vật', color: '#16a34a', bg: 'bg-green-100' },
+  storyline_created:{ label: 'Tạo nhánh',  color: '#16a34a', bg: 'bg-green-100' },
+  student_registered:{ label: 'HS đăng ký', color: '#7c3aed', bg: 'bg-purple-100' },
+  student_joined:   { label: 'HS tham gia', color: '#7c3aed', bg: 'bg-purple-100' },
+  exam_published:   { label: 'Đăng đề',   color: '#2563eb', bg: 'bg-blue-100' },
+  submission_submitted:{ label: 'HS nộp bài', color: '#2563eb', bg: 'bg-blue-100' },
+  grading_returned: { label: 'Trả bài',   color: '#2563eb', bg: 'bg-blue-100' },
+  ai_exam_approved: { label: 'Duyệt đề AI', color: '#9333ea', bg: 'bg-purple-100' },
 };
 
 const ROLE_META: Record<string, { bg: string; color: string; label: string }> = {

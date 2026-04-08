@@ -3,12 +3,11 @@
  * Token is stored per-role in localStorage to allow multi-account (admin/teacher/student) sessions.
  */
 const TOKEN_KEY = () => {
-  // Read role from current URL path to pick correct localStorage key
   const path = typeof window !== 'undefined' ? window.location.pathname : '';
   if (path.startsWith('/admin')) return 'token_admin';
   if (path.startsWith('/teacher')) return 'token_teacher';
   if (path.startsWith('/student')) return 'token_student';
-  return 'token'; // fallback
+  return 'token';
 };
 
 export const getToken = () => {
@@ -22,6 +21,19 @@ export const fetcher = (url: string) => {
   return fetch(url, { headers }).then((res) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
+  });
+};
+
+/** Fetch wrapper WITH auth — use for POST/PATCH/DELETE to ensure token is sent */
+export const authFetch = (url: string, options: RequestInit = {}) => {
+  const token = getToken();
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
   });
 };
 
@@ -39,10 +51,8 @@ export const clearTokens = () => {
   localStorage.removeItem('token');
 };
 
-/** Default SWR options: disable auto-revalidation on window focus */
+/** Default SWR options */
 export const SWR_OPTS = { revalidateOnFocus: false };
-
-/** SWR options for pages needing fresh data on focus (e.g. exam timer) */
 export const SWR_OPTS_REALTIME = { revalidateOnFocus: true, revalidateOnReconnect: true };
 
 /**

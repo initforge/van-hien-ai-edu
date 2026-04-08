@@ -115,7 +115,7 @@ export async function onRequestPost({ request, env, data }) {
     const url = new URL(request.url);
     // route: /api/teacher/students/import
     if (url.pathname.endsWith('/import')) {
-      return handleImport({ request, env, data });
+      return await handleImport({ request, env, data });
     }
     return jsonError('Not found.', 404);
   } catch (e) {

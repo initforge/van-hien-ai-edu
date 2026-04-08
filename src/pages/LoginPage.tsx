@@ -7,7 +7,7 @@ type AuthTab = "login" | "register";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
+  const { setLoginUser } = useAuth();
   const [tab, setTab] = useState<AuthTab>("login");
 
   // Login state
@@ -48,7 +48,7 @@ export default function LoginPage() {
 
       if (data.redirect && data.token && data.user?.role) {
         storeToken(data.token, data.user.role);
-        await refreshUser();
+        setLoginUser(data.user as import('../contexts/AuthContext').User);
         navigate(data.redirect);
       }
     } catch (e: unknown) {

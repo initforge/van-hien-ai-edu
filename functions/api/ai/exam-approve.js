@@ -9,6 +9,17 @@ import { jsonError } from '../_utils.js';
 
 const KV_KEY_PREFIX = 'exam-preview:';
 
+async function logActivity(env, user, action, targetType, targetId, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, action, targetType, targetId, details).run();
+  } catch (e) {
+    console.error('activity_log failed:', e);
+  }
+}
+
 export async function onRequestPost({ request, env, data }) {
   try {
     const user = data?.user;
@@ -78,6 +89,9 @@ export async function onRequestPost({ request, env, data }) {
 
     // Delete KV key
     await kvDelete(env.VANHIEN_KV, `${KV_KEY_PREFIX}${previewId}`);
+
+    await logActivity(env, user, 'ai_exam_approved', 'exam', examId,
+      JSON.stringify({ title: finalTitle, questionsCount: finalQuestions.length }));
 
     return new Response(JSON.stringify({
       success: true,

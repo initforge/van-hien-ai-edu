@@ -14,6 +14,8 @@ interface AuthContextType {
   isLoading: boolean;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  /** Set user immediately from login response — skips extra /api/me round-trip */
+  setLoginUser: (user: User) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authResolved, setAuthResolved] = useState(false);
   const navigate = useNavigate();
 
   const fetchUser = async () => {
@@ -28,6 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) {
       setUser(null);
       setIsLoading(false);
+      setAuthResolved(true);
       return;
     }
     try {
@@ -35,8 +39,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.status === 401) {
-        clearTokens();
-        setUser(null);
+        // Only clear if auth hasn't been resolved via login (setLoginUser).
+        // If user is already set (from successful login), the mount-fetch 401
+        // is a stale request — ignore it rather than logging the user out.
+        if (!authResolved) {
+          clearTokens();
+          setUser(null);
+        }
       } else if (res.ok) {
         const data = await res.json();
         setUser(data.user);
@@ -45,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Network error = keep current state
     } finally {
       setIsLoading(false);
+      setAuthResolved(true);
     }
   };
 
@@ -54,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     const token = getToken();
+    navigate('/');
     if (token) {
       try {
         await fetch('/api/auth', {
@@ -64,11 +75,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     clearTokens();
     setUser(null);
-    navigate('/');
+  };
+
+  const setLoginUser = (loginUser: User) => {
+    // Mark auth resolved the moment login succeeds — suppresses stale 401 from mount fetch
+    setAuthResolved(true);
+    setUser(loginUser);
+    setIsLoading(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, logout, refreshUser: fetchUser }}>
+    <AuthContext.Provider value={{ user, isLoading, logout, refreshUser: fetchUser, setLoginUser }}>
       {children}
     </AuthContext.Provider>
   );

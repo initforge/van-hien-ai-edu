@@ -213,7 +213,6 @@ const MINI_WARNING_META: Record<string, { icon: string; color: string; label: st
   W4: { icon: 'trending_down', color: 'text-red-600',   label: 'Điểm giảm',   desc: 'Điểm thấp hơn đáng kể so với 5 bài gần nhất' },
   W5: { icon: 'trending_up',  color: 'text-green-600', label: 'Điểm tăng',  desc: 'Điểm cao bất thường so với lịch sử' },
   W6: { icon: 'content_copy',  color: 'text-tertiary',   label: 'Trùng lặp',   desc: 'Nội dung trùng lặp với bạn cùng lớp' },
-  W7: { icon: 'schedule',      color: 'text-amber-600', label: 'Hết hạn',     desc: 'Bài nộp gần đến hạn hoặc đã quá hạn' },
 };
 
 const SEV_COLOR: Record<string, string> = {

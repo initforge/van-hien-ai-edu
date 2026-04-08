@@ -94,11 +94,13 @@ export async function onRequestPost({ request, env }) {
       });
     }
 
-    // Log login
+    // Log login to activity_logs
     try {
       await env.DB.prepare(
-        "INSERT INTO logs (action, role, ip, timestamp) VALUES (?, ?, ?, ?)"
-      ).bind("login_success", user.role, request.headers.get("cf-connecting-ip") || "unknown", new Date().toISOString()).run();
+        `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+         VALUES (?, ?, ?, ?, 'login', 'user', ?, ?, datetime('now'))`
+      ).bind(crypto.randomUUID(), user.id, user.name, user.role, user.id,
+        JSON.stringify({ ip: request.headers.get("cf-connecting-ip") || "unknown" })).run();
     } catch (e) {
       console.error("DB log failed:", e);
     }
@@ -156,11 +158,25 @@ export async function onRequestDelete({ request, env }) {
     if (cookieMatch) token = cookieMatch[1];
   }
 
+  let logoutUser = null;
   if (token && env.VANHIEN_KV) {
     try {
       const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
       if (payload.jti) await revokeToken(env.VANHIEN_KV, payload.jti, 86400);
+      logoutUser = payload;
     } catch { /* ignore */ }
+  }
+
+  // Log logout to activity_logs
+  if (logoutUser) {
+    try {
+      await env.DB.prepare(
+        `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+         VALUES (?, ?, ?, ?, 'logout', 'user', ?, '{}', datetime('now'))`
+      ).bind(crypto.randomUUID(), logoutUser.id, logoutUser.name, logoutUser.role, logoutUser.id).run();
+    } catch (e) {
+      console.error("logout log failed:", e);
+    }
   }
 
   const clearCookies = ['admin', 'teacher', 'student'].map(role =>

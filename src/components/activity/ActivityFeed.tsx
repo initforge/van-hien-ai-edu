@@ -85,6 +85,21 @@ function getActionMeta(action: string, details: Record<string, string> = {}, tar
       color: 'bg-tertiary/10 text-tertiary',
       label: `tạo nhân vật "${label}"`,
     },
+    login: {
+      icon: 'login',
+      color: 'bg-green-100/50 text-green-700',
+      label: 'đăng nhập',
+    },
+    logout: {
+      icon: 'logout',
+      color: 'bg-red-100/50 text-red-700',
+      label: 'đăng xuất',
+    },
+    reset_password: {
+      icon: 'key',
+      color: 'bg-amber-100 text-amber-700',
+      label: `đặt lại mật khẩu cho tài khoản`,
+    },
   };
 
   return meta[action] || {

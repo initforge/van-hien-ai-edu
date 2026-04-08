@@ -122,7 +122,7 @@ export async function onRequestPatch({ env, data, request }) {
 
     await env.DB.prepare("UPDATE users SET password_plain = ? WHERE id = ?").bind(password, id).run();
 
-    await logActivity(env, data.user, 'reset_password', 'user', id, `Reset password for user: ${id}`);
+    await logActivity(env, data.user, 'reset_password', 'user', id, `Đặt lại mật khẩu cho tài khoản: ${existing.username}`);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { 'Content-Type': 'application/json' }
@@ -153,7 +153,7 @@ export async function onRequestDelete({ env, data, request }) {
 
     await logActivity(env, data.user, 'delete_user', 'user', userId, `Deleted user: ${userId}`);
 
-    return cachedJson({ success: true }, { profile: 'dynamic' });
+    return cachedJson({ success: true }, { profile: 'nocache' });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Failed to delete user' }), { status: 500 });
   }

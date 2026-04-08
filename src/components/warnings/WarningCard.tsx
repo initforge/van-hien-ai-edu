@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 interface WarningItem {
   id: string;
-  type: 'W1' | 'W2' | 'W3' | 'W4' | 'W5' | 'W6' | 'W7';
+  type: 'W1' | 'W2' | 'W3' | 'W4' | 'W5' | 'W6';
   severity: 'low' | 'medium' | 'high';
   studentId?: string;
   studentName?: string;
@@ -76,15 +76,6 @@ const WARNING_META: Record<string, {
     severityColor: { low: 'bg-tertiary/10 text-tertiary', medium: 'bg-orange-100 text-orange-700', high: 'bg-red-100 text-red-700' },
     actionLabel: 'Xem báo cáo',
     secondAction: 'Bỏ qua',
-  },
-  W7: {
-    icon: 'schedule',
-    color: 'text-amber-600',
-    bgColor: 'border-l-amber-400',
-    label: 'Sắp hết hạn',
-    severityColor: { low: 'bg-amber-100 text-amber-700', medium: 'bg-orange-100 text-orange-700', high: 'bg-red-100 text-red-700' },
-    actionLabel: 'Xem đề',
-    secondAction: 'Gia hạn',
   },
 };
 

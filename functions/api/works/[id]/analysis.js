@@ -35,7 +35,7 @@ export async function onRequestGet({ env, data, request }) {
       updatedAt: analysisMap[s]?.updatedAt || null,
     }));
 
-    return cachedJson({ id, analysis }, { profile: 'dynamic' });
+    return cachedJson({ id, analysis }, { profile: 'nocache' });
   } catch (e) {
     console.error('analysis GET error:', e);
     return new Response(JSON.stringify({ error: 'Lỗi khi tải phân tích' }), { status: 500 });

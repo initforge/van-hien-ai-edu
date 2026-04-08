@@ -241,25 +241,28 @@ export async function onRequestDelete({ env, data, request }) {
     const deleteId = url.searchParams.get('id');
     if (!deleteId) return jsonError('Thiếu id.', 400);
 
-    // Cascade: submissions → answers, questions, exams, class_students
-    const submissions = await env.DB.prepare(
+    // Cascade: delete all in parallel — each is independent
+    const subIds = await env.DB.prepare(
       "SELECT id FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE class_id = ?)"
     ).bind(deleteId).all();
-    for (const s of submissions.results || []) {
-      await env.DB.prepare("DELETE FROM submission_answers WHERE submission_id = ?").bind(s.id).run();
-    }
-    await env.DB.prepare(
-      "DELETE FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE class_id = ?)"
-    ).bind(deleteId).run();
-    await env.DB.prepare(
-      "DELETE FROM questions WHERE exam_id IN (SELECT id FROM exams WHERE class_id = ?)"
-    ).bind(deleteId).run();
-    await env.DB.prepare("DELETE FROM exams WHERE class_id = ?").bind(deleteId).run();
-    await env.DB.prepare("DELETE FROM class_students WHERE class_id = ?").bind(deleteId).run();
+    const submissionIds = (subIds.results || []).map(s => s.id);
+
+    await Promise.all([
+      // Delete answers for all submissions (parallel)
+      ...submissionIds.map(sid =>
+        env.DB.prepare("DELETE FROM submission_answers WHERE submission_id = ?").bind(sid).run()
+      ),
+      env.DB.prepare("DELETE FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE class_id = ?)")
+        .bind(deleteId).run(),
+      env.DB.prepare("DELETE FROM questions WHERE exam_id IN (SELECT id FROM exams WHERE class_id = ?)")
+        .bind(deleteId).run(),
+      env.DB.prepare("DELETE FROM exams WHERE class_id = ?").bind(deleteId).run(),
+      env.DB.prepare("DELETE FROM class_students WHERE class_id = ?").bind(deleteId).run(),
+    ]);
     await env.DB.prepare("DELETE FROM classes WHERE id = ?").bind(deleteId).run();
 
     await logActivity(env, data.user, 'delete_class', 'class', deleteId, `Xóa lớp: ${deleteId}`);
-    return cachedJson({ success: true }, { profile: 'dynamic' });
+    return cachedJson({ success: true }, { profile: 'nocache' });
   } catch (e) {
     console.error('admin/classes DELETE error:', e);
     return jsonError('Lỗi khi xóa lớp học.', 500);

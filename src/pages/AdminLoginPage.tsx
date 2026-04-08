@@ -5,7 +5,7 @@ import { storeToken } from "../lib/fetcher";
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
+  const { setLoginUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
 
       if (data.redirect && data.token && data.user?.role) {
         storeToken(data.token, data.user.role);
-        await refreshUser();
+        setLoginUser(data.user as import('../contexts/AuthContext').User);
         navigate(data.redirect);
       }
     } catch (e: unknown) {

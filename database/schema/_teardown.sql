@@ -18,7 +18,6 @@ DROP TABLE IF EXISTS storyline_nodes;
 DROP TABLE IF EXISTS storylines;
 DROP TABLE IF EXISTS chat_messages;
 DROP TABLE IF EXISTS chat_threads;
-DROP TABLE IF EXISTS work_chunks;
 DROP TABLE IF EXISTS work_analysis;
 DROP TABLE IF EXISTS works;
 DROP TABLE IF EXISTS class_students;

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import useSWR from "swr";
-import { fetcher } from "../../lib/fetcher";
+import { fetcher, authFetch } from "../../lib/fetcher";
 
 interface MultiverseStory {
   id: string;
@@ -61,7 +61,7 @@ export default function MultiversePage() {
     setCreating(true);
     setCreateError('');
     try {
-      const res = await fetch('/api/multiverse', {
+      const res = await authFetch('/api/multiverse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -249,14 +249,15 @@ export async function onRequestDelete({ request, env, data }) {
     ).bind(id, user.id).first();
     if (!exam) return new Response(JSON.stringify({ error: 'Không tìm thấy hoặc không có quyền.' }), { status: 404 });
 
-    // Delete questions first (foreign key)
-    await env.DB.prepare("DELETE FROM questions WHERE exam_id = ?").bind(id).run();
-    // Delete submissions first
-    await env.DB.prepare("DELETE FROM submissions WHERE exam_id = ?").bind(id).run();
-    // Delete exam
+    // Delete in parallel — questions and submissions are independent
+    await Promise.all([
+      env.DB.prepare("DELETE FROM questions WHERE exam_id = ?").bind(id).run(),
+      env.DB.prepare("DELETE FROM submissions WHERE exam_id = ?").bind(id).run(),
+    ]);
+    // Then delete exam
     await env.DB.prepare("DELETE FROM exams WHERE id = ?").bind(id).run();
 
-    return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
+    return cachedJson({ success: true }, { profile: 'nocache' });
   } catch (e) {
     console.error('exams DELETE error:', e);
     return new Response(JSON.stringify({ error: 'Lỗi khi xóa.' }), { status: 500 });

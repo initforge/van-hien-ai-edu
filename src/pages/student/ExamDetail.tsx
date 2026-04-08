@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import useSWR from 'swr';
 import { useAuth } from '../../contexts/AuthContext';
-import { fetcher } from '../../lib/fetcher';
+import { fetcher, authFetch } from '../../lib/fetcher';
 import type { ExamDetail } from '../../types/api';
 
 
@@ -61,7 +61,7 @@ export default function ExamDetailPage() {
       ans[el.dataset.answerId || el.id] = el.value;
     });
     try {
-      await fetch('/api/submissions', {
+      await authFetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ examId, answers: ans })
@@ -120,7 +120,7 @@ export default function ExamDetailPage() {
     });
 
     try {
-      const res = await fetch('/api/submissions', {
+      const res = await authFetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ examId, answers: ans })

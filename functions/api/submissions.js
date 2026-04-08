@@ -1,5 +1,6 @@
 import { cachedJson } from './_cache.js';
 import { computeAndSaveSkillAssessments } from './_skillAssessments.js';
+import { computeWarningsForTeacher } from './warnings.js';
 
 async function logActivity(env, user, action, targetType, targetId, details) {
   try {
@@ -79,7 +80,7 @@ export async function onRequestPost({ request, env, data }) {
     if (!examId) return new Response(JSON.stringify({ error: 'Thiếu examId.' }), { status: 400 });
 
     const exam = await env.DB.prepare(
-      "SELECT id, title FROM exams WHERE id = ? LIMIT 1"
+      "SELECT id, title, teacher_id FROM exams WHERE id = ? LIMIT 1"
     ).bind(examId).first();
     if (!exam) return new Response(JSON.stringify({ error: 'Không tìm thấy đề thi.' }), { status: 404 });
 
@@ -99,6 +100,11 @@ export async function onRequestPost({ request, env, data }) {
 
     // Log: student submitted
     await logActivity(env, user, 'submission_submitted', 'submission', submissionId, JSON.stringify({ title: exam.title || examId }));
+
+    // Auto-trigger warning computation for this teacher's submissions (non-blocking)
+    if (exam.teacher_id) {
+      computeWarningsForTeacher(env, exam.teacher_id).catch(e => console.error('warning compute error:', e));
+    }
 
     // Save essay answers
     if (answers && typeof answers === 'object') {

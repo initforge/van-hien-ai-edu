@@ -10,6 +10,17 @@ import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'grade-preview:';
 
+async function logActivity(env, user, action, targetType, targetId, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, action, targetType, targetId, details).run();
+  } catch (e) {
+    console.error('activity_log failed:', e);
+  }
+}
+
 export async function onRequestPost({ request, env, data }) {
   try {
     const user = data?.user;
@@ -59,13 +70,16 @@ export async function onRequestPost({ request, env, data }) {
 
     await kvDelete(env.VANHIEN_KV, `${KV_KEY_PREFIX}${submissionId}`);
 
-    // Log
+    // Log: get student name
+    const studentRow = await env.DB.prepare(
+      `SELECT u.name FROM submissions s JOIN users u ON s.student_id = u.id WHERE s.id = ?`
+    ).bind(submissionId).first();
     const submissionRow = await env.DB.prepare(
       `SELECT e.title FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.id = ?`
     ).bind(submissionId).first();
-    await logTokenUsage(env, user.id, 'grading',
-      `Chấm: ${submissionRow?.title || submissionId} — AI preview approved`,
-      0, 0);
+
+    await logActivity(env, user, 'ai_grading_accepted', 'submission', submissionId,
+      JSON.stringify({ title: submissionRow?.title, studentName: studentRow?.name, score: finalScore }));
 
     return new Response(JSON.stringify({
       success: true,

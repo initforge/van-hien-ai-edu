@@ -101,6 +101,7 @@ export async function onRequestPost({ request, env, data }) {
 
     // ── Call AI ───────────────────────────────────────────────────────────────
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
+      env,
       '@cf/google/gemma-3-12b-it',
       { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1024, temperature: 0.2 }
     );

@@ -1,5 +1,16 @@
 import { cachedJson } from './_cache.js';
 
+async function logActivity(env, user, action, targetType, targetId, details) {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO activity_logs (id, user_id, user_name, user_role, action, target_type, target_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(crypto.randomUUID(), user.id, user.name, user.role, action, targetType, targetId, details).run();
+  } catch (e) {
+    console.error('activity_log failed:', e);
+  }
+}
+
 // GET /api/characters — list characters
 export async function onRequestGet({ env, data, request }) {
   try {
@@ -81,6 +92,8 @@ export async function onRequestPost({ request, env, data }) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, name, shortInitials, role || null, description || null,
        personality || null, systemPrompt || null, workId || null, user.id, now).run();
+
+    await logActivity(env, user, 'character_created', 'character', id, JSON.stringify({ name, workId }));
 
     return cachedJson({ id, name, initials: shortInitials, active: 1, createdAt: now }, { status: 201, profile: 'nocache' });
   } catch (e) {
