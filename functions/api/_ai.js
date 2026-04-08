@@ -65,13 +65,28 @@ export function aiStream(env, model, opts = {}, feature = 'unknown') {
           temperature,
         });
 
+        // CF Workers AI streaming returns an async iterable of NDJSON lines:
+        // each chunk is an object with numeric byte-value keys, e.g.
+        // { "0": 100, "1": 97, "2": 116, ... }  →  UTF-8 bytes of "data: {...}\n"
+        // Decode bytes → strip "data: " prefix → parse NDJSON → extract .response field
         for await (const chunk of result) {
-          const text = chunk?.response ?? '';
-          if (text) {
-            chunks.push(text);
-            fullText += text;
-            controller.enqueue(encoder.encode(text));
-          }
+          const bytes = Object.values(chunk);
+          // Find the line end (newline byte = 10)
+          const lineEnd = bytes.indexOf(10);
+          const lineBytes = lineEnd >= 0 ? bytes.slice(0, lineEnd) : bytes;
+          const line = new TextDecoder().decode(new Uint8Array(lineBytes));
+          // Strip "data: " SSE prefix if present
+          const ndjson = line.startsWith('data: ') ? line.slice(6) : line;
+          if (!ndjson.trim()) continue;
+          try {
+            const parsed = JSON.parse(ndjson);
+            const text = parsed?.response ?? '';
+            if (text) {
+              chunks.push(text);
+              fullText += text;
+              controller.enqueue(encoder.encode(text));
+            }
+          } catch (_) { /* skip malformed NDJSON lines */ }
         }
         controller.close();
         resolveFullText(fullText);

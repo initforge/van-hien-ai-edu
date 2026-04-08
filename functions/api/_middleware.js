@@ -14,6 +14,19 @@ export async function onRequest(context) {
     return next();
   }
 
+  // Handle CORS preflight — browsers send OPTIONS before POST with custom headers
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Max-Age': '86400',
+      },
+    });
+  }
+
   try {
     // Read Token: Authorization header first (localStorage approach), then cookies (legacy)
     let token = request.headers.get('Authorization')?.replace('Bearer ', '');
@@ -31,12 +44,18 @@ export async function onRequest(context) {
     }
 
     if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
     }
 
     // Verify JWT using env secret
     if (!env.JWT_SECRET) {
-      return new Response(JSON.stringify({ error: "Server misconfigured" }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Server misconfigured" }), {
+        status: 500,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
     }
     const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
 
@@ -44,7 +63,10 @@ export async function onRequest(context) {
     if (payload.jti && env.VANHIEN_KV) {
       const revoked = await isTokenRevoked(env.VANHIEN_KV, payload.jti);
       if (revoked) {
-        return new Response(JSON.stringify({ error: "Token has been revoked" }), { status: 401 });
+        return new Response(JSON.stringify({ error: "Token has been revoked" }), {
+        status: 401,
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
       }
     }
 
