@@ -3,15 +3,17 @@ import useSWR from 'swr';
 import { fetcher, authFetch } from '../../lib/fetcher';
 import type { User } from '../../types/api';
 
-type RoleFilter = 'all' | 'teacher' | 'admin';
+type RoleFilter = 'all' | 'student' | 'teacher' | 'admin';
 
 const ROLE_META = {
   all:     { label: 'Tất cả',     icon: 'group',          color: '#326286', bg: 'bg-[#326286]/10' },
-  teacher: { label: 'Giáo viên',  icon: 'school',         color: '#005142', bg: 'bg-[#005142]/10' },
+  student: { label: 'Học sinh',  icon: 'face',           color: '#7b4f00', bg: 'bg-[#7b4f00]/10' },
+  teacher: { label: 'Giáo viên', icon: 'school',         color: '#005142', bg: 'bg-[#005142]/10' },
   admin:   { label: 'Quản trị',   icon: 'admin_panel_settings', color: '#6f0403', bg: 'bg-tertiary/10' },
 } as const;
 
 const ROLE_BADGE = {
+  student: { bg: 'bg-[#326286]/10', text: 'text-[#326286]' },
   teacher: { bg: 'bg-[#005142]/10', text: 'text-[#005142]' },
   admin:   { bg: 'bg-tertiary/10',  text: 'text-tertiary' },
 } as const;
@@ -34,10 +36,11 @@ export default function AdminUsersPage() {
   const [resetSuccess, setResetSuccess] = useState('');
 
   const filtered = filter === 'all'
-    ? users.filter(u => u.role === 'teacher' || u.role === 'admin')
+    ? users
     : users.filter(u => u.role === filter);
   const counts = {
-    all: users.filter(u => u.role === 'teacher' || u.role === 'admin').length,
+    all: users.length,
+    student: users.filter(u => u.role === 'student').length,
     teacher: users.filter(u => u.role === 'teacher').length,
     admin: users.filter(u => u.role === 'admin').length,
   };
@@ -171,7 +174,7 @@ export default function AdminUsersPage() {
                   <td className="p-4 text-outline">{u.email}</td>
                   <td className="p-4">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.bg} ${ROLE_BADGE[u.role as keyof typeof ROLE_BADGE]?.text}`}>
-                      {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Giáo viên' : u.role}
+                      {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Giáo viên' : u.role === 'student' ? 'Học sinh' : u.role}
                     </span>
                   </td>
                   <td className="p-4 text-outline text-xs">{u.createdAt?.slice(0, 10)}</td>
