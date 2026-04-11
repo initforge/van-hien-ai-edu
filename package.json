@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "db:schema": "npx wrangler d1 migrations apply vanhien-db --local"
+    "db:schema": "npx wrangler d1 migrations apply vanhien-db --local",
+    "deploy": "npm run build && npx wrangler pages deploy dist/ --project-name=van-hien --commit-dirty=true && node scripts/purge-cache.js"
   },
   "dependencies": {
     "jose": "^6.2.2",

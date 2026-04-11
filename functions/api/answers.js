@@ -4,13 +4,13 @@ import { cachedJson } from './_cache.js';
 export async function onRequestGet({ request, env, data }) {
   try {
     const user = data?.user;
-    if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    if (!user) return cachedJson({ error: 'Unauthorized' }, { status: 401, profile: 'nocache' });
 
     const url = new URL(request.url);
     const submissionId = url.searchParams.get('submissionId');
 
     if (!submissionId) {
-      return new Response(JSON.stringify({ error: 'Thiếu submissionId.' }), { status: 400 });
+      return cachedJson({ error: 'Thiếu submissionId.' }, { status: 400, profile: 'nocache' });
     }
 
     // Verify teacher owns this submission, get student name
@@ -24,12 +24,19 @@ export async function onRequestGet({ request, env, data }) {
     ).bind(submissionId, user.id).first();
 
     if (!submission) {
-      return new Response(JSON.stringify({ error: 'Không có quyền truy cập.' }), { status: 403 });
+      return cachedJson({ error: 'Không có quyền truy cập.' }, { status: 403, profile: 'nocache' });
     }
 
-    // Fetch all answers with question content
+    // Fetch all answers with question content, rubric, and order
     const result = await env.DB.prepare(
-      `SELECT sa.question_id AS questionId, sa.content, sa.ai_score AS aiScore
+      `SELECT sa.question_id AS questionId,
+              sa.content,
+              sa.ai_score  AS aiScore,
+              sa.teacher_score AS teacherScore,
+              q.content     AS questionContent,
+              q.type        AS questionType,
+              q.points      AS questionPoints,
+              q.order_index AS orderIndex
        FROM submission_answers sa
        JOIN questions q ON sa.question_id = q.id
        WHERE sa.submission_id = ?
@@ -39,6 +46,6 @@ export async function onRequestGet({ request, env, data }) {
     return cachedJson({ studentName: submission.studentName, answers: result.results || [] }, { profile: 'dynamic' });
   } catch (e) {
     console.error('answers GET error:', e);
-    return new Response(JSON.stringify({ error: 'Lỗi khi tải bài làm.' }), { status: 500 });
+    return cachedJson({ error: 'Lỗi khi tải bài làm.' }, { status: 500, profile: 'nocache' });
   }
 }

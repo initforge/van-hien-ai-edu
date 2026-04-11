@@ -38,6 +38,7 @@ export async function onRequestGet({ env, data, request }) {
           `SELECT s.id, s.exam_id AS examId, s.student_id AS studentId,
                   s.status, s.ai_score AS aiScore, s.teacher_score AS teacherScore,
                   s.teacher_comment AS teacherComment, s.submitted_at AS submittedAt,
+                  s.ai_rubric AS aiRubric,
                   u.name AS studentName,
                   e.title AS examTitle, e.class_id AS classId
            FROM submissions s
@@ -51,17 +52,25 @@ export async function onRequestGet({ env, data, request }) {
           `SELECT COUNT(*) AS total FROM submissions s JOIN exams e ON s.exam_id = e.id ${whereStr}`
         ).bind(...binds).first(),
       ]);
-      return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
+      const rows = (rowsResult.results || []).map(row => ({
+        ...row,
+        aiRubric: row.ai_rubric ? (() => { try { return JSON.parse(row.ai_rubric); } catch { return null; } })() : null,
+      }));
+      return cachedJson({ data: rows, total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
     } else {
       const [rowsResult, countResult] = await Promise.all([
         env.DB.prepare(
-          "SELECT s.id, s.exam_id AS examId, e.title, e.type, s.status, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment, s.submitted_at AS submittedAt FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? ORDER BY s.submitted_at DESC LIMIT ? OFFSET ?"
+          "SELECT s.id, s.exam_id AS examId, e.title, e.type, s.status, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment, s.submitted_at AS submittedAt, s.ai_rubric AS aiRubric FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? ORDER BY s.submitted_at DESC LIMIT ? OFFSET ?"
         ).bind(user.id, limit, offset).all(),
         env.DB.prepare(
           "SELECT COUNT(*) AS total FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ?"
         ).bind(user.id).first(),
       ]);
-      return cachedJson({ data: rowsResult.results || [], total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
+      const rows = (rowsResult.results || []).map(row => ({
+        ...row,
+        aiRubric: row.ai_rubric ? (() => { try { return JSON.parse(row.ai_rubric); } catch { return null; } })() : null,
+      }));
+      return cachedJson({ data: rows, total: countResult?.total || 0, limit, offset }, { profile: 'dynamic' });
     }
   } catch (e) {
     console.error('submissions GET error:', e);
@@ -147,7 +156,7 @@ export async function onRequestPatch({ request, env, data }) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
     }
 
-    const { id, teacherScore, teacherComment, aiScore } = await request.json();
+    const { id, teacherScore, teacherComment, aiScore, aiRubric } = await request.json();
     if (!id) return new Response(JSON.stringify({ error: 'Thiếu id.' }), { status: 400 });
 
     const exam = await env.DB.prepare(
@@ -155,15 +164,19 @@ export async function onRequestPatch({ request, env, data }) {
     ).bind(id, user.id).first();
     if (!exam) return new Response(JSON.stringify({ error: 'Không có quyền.' }), { status: 403 });
 
-    // Persist aiScore if provided (preserve existing), then set teacher score + mark returned
+    // Always preserve ai_score when returning (even if not explicitly passed, keep existing)
+    const aiScoreVal = aiScore ?? (
+      await env.DB.prepare("SELECT ai_score FROM submissions WHERE id = ?").bind(id).first()
+    )?.ai_score;
+
     if (aiScore != null) {
       await env.DB.prepare(
-        "UPDATE submissions SET ai_score = ?, teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
-      ).bind(aiScore, teacherScore ?? null, teacherComment ?? null, id).run();
+        "UPDATE submissions SET ai_score = ?, teacher_score = ?, teacher_comment = ?, ai_rubric = ?, status = 'returned' WHERE id = ?"
+      ).bind(aiScoreVal, teacherScore ?? null, teacherComment ?? null, aiRubric ?? null, id).run();
     } else {
       await env.DB.prepare(
-        "UPDATE submissions SET teacher_score = ?, teacher_comment = ?, status = 'returned' WHERE id = ?"
-      ).bind(teacherScore ?? null, teacherComment ?? null, id).run();
+        "UPDATE submissions SET teacher_score = ?, teacher_comment = ?, ai_rubric = COALESCE(ai_rubric, ?), status = 'returned' WHERE id = ?"
+      ).bind(teacherScore ?? null, teacherComment ?? null, aiRubric ?? null, id).run();
     }
 
     // Log: teacher returned grade

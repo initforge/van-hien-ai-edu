@@ -15,7 +15,7 @@ export async function onRequestGet({ env, data, request }) {
           "SELECT id, title, type, deadline FROM exams WHERE teacher_id = ? AND status = 'published' ORDER BY deadline ASC LIMIT ?"
         ).bind(user.id, upcomingLimit).all(),
         env.DB.prepare(
-          "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.ai_comment AS teacherComment FROM submissions s LEFT JOIN exams e ON s.exam_id = e.id WHERE e.teacher_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT ?"
+          "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment FROM submissions s LEFT JOIN exams e ON s.exam_id = e.id WHERE e.teacher_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT ?"
         ).bind(user.id, recentLimit).all(),
         env.DB.prepare(
           "SELECT COUNT(DISTINCT cs.student_id) AS count FROM classes c JOIN class_students cs ON c.id = cs.class_id WHERE c.teacher_id = ?"
@@ -45,7 +45,7 @@ export async function onRequestGet({ env, data, request }) {
           "SELECT e.id, e.title, e.type, e.deadline FROM exams e JOIN class_students cs ON e.class_id = cs.class_id WHERE cs.student_id = ? AND e.status = 'published' ORDER BY e.deadline ASC LIMIT ?"
         ).bind(user.id, upcomingLimit).all(),
         env.DB.prepare(
-          "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.ai_comment AS teacherComment FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT ?"
+          "SELECT s.id AS submissionId, e.title AS examTitle, e.type AS examType, s.ai_score AS aiScore, s.teacher_score AS teacherScore, s.teacher_comment AS teacherComment FROM submissions s JOIN exams e ON s.exam_id = e.id WHERE s.student_id = ? AND s.status = 'returned' ORDER BY s.submitted_at DESC LIMIT ?"
         ).bind(user.id, recentLimit).all(),
       ]);
 

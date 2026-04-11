@@ -40,6 +40,7 @@ interface SubmissionRow {
   teacherScore: number | null;
   teacherComment: string | null;
   submittedAt: string | null;
+  aiRubric?: any;
 }
 
 // ─── Chat Thread Modal ────────────────────────────────────────────────────────
@@ -307,7 +308,19 @@ export default function GradingPage() {
   const { data: essayData } = useSWR(
     selectedStudent ? `/api/answers?submissionId=${selectedStudent}` : null,
     fetcher
-  ) as { data: { studentName: string; answers: { questionId: string; content: string }[] } | undefined };
+  ) as { data: {
+    studentName: string;
+    answers: {
+      questionId: string;
+      content: string;
+      questionContent: string;
+      questionType: string;
+      questionPoints: number;
+      orderIndex: number;
+      aiScore: number | null;
+      teacherScore: number | null;
+    }[]
+  } | undefined };
 
   const CLASSES: ClassRow[] = (classesData?.data ?? []).map((c: any) => ({
     ...c,
@@ -328,7 +341,9 @@ export default function GradingPage() {
       desc: r.description || '',
       weight: r.weight ?? 0,
       ai: '',
+      aiComment: '',
       gvRef: '',
+      gvComment: '',
     }));
   }, [rubricData]);
 
@@ -361,11 +376,21 @@ export default function GradingPage() {
     [students, selectedStudent]
   );
 
-  const teacherTotal = rubricScores.reduce((sum, r) => sum + (parseFloat(r.gvRef) || 0), 0);
+  // Weighted total: sum of (score × weight%) / 100, capped at 10
+  const teacherTotal = Math.min(10, rubricScores.reduce((sum, r) => {
+    const pts = parseFloat(r.gvRef) || 0;
+    return sum + pts * r.weight;
+  }, 0) / 100);
+
+  // Weighted AI total (display only)
+  const aiDisplayTotal = Math.min(10, rubricScores.reduce((sum, r) => {
+    const pts = parseFloat(r.ai) || 0;
+    return sum + pts * r.weight;
+  }, 0) / 100);
 
   // When entering grading step, initialise rubric from DB
-  const handleEnterGrading = (submissionId: string) => {
-    setSelectedStudent(submissionId);
+  const handleEnterGrading = (submission: SubmissionRow) => {
+    setSelectedStudent(submission.id);
     if (rubricFromDb && rubricFromDb.length > 0) {
       setRubricScores(rubricFromDb.map(r => ({ ...r, ai: '', gvRef: '' })));
     } else {
@@ -373,6 +398,51 @@ export default function GradingPage() {
     }
     setAiResult(null);
     setTeacherComment('');
+
+    // ── Restore AI grading from stored ai_rubric (for returned submissions) ──
+    if (submission.status === SUBMISSION_STATUS.RETURNED && submission.aiScore != null) {
+      let restoredAi: typeof aiResult = null;
+      let restoredRubric = rubricFromDb?.length ? rubricFromDb.map(r => ({ ...r, ai: '', gvRef: '' })) : RUBRIC_DEFAULT.map(r => ({ ...r, ai: '', gvRef: '' }));
+
+      // Try to parse ai_rubric blob stored during "Trả bài"
+      const aiRubricRaw = (submission as any).aiRubric;
+      if (aiRubricRaw) {
+        try {
+          const parsed = typeof aiRubricRaw === 'string' ? JSON.parse(aiRubricRaw) : aiRubricRaw;
+          const scores = parsed?.rubricScores || [];
+          restoredAi = {
+            score: submission.aiScore,
+            summary: parsed?.summary || submission.teacherComment || '',
+            rubricScores: scores,
+          };
+          restoredRubric = restoredRubric.map((r) => {
+            const matched = scores.find(
+              (s: any) => s.name?.toLowerCase().trim() === r.name.toLowerCase().trim()
+            );
+            if (matched) {
+              return {
+                ...r,
+                ai: String(matched.aiPoints ?? matched.points ?? ''),
+                aiComment: matched.aiComment || '',
+                gvRef: String(matched.gvPoints ?? ''),
+                gvComment: matched.gvComment || '',
+              };
+            }
+            return r;
+          });
+        } catch (_) {
+          // ai_rubric unparseable — fall through to score-only display
+        }
+      }
+      // Even if ai_rubric missing, at minimum show the total AI score
+      if (!restoredAi) {
+        restoredAi = { score: submission.aiScore, summary: '', rubricScores: [] };
+      }
+      setAiResult(restoredAi);
+      setRubricScores(restoredRubric);
+      if (submission.teacherComment) setTeacherComment(submission.teacherComment);
+    }
+
     setStep('grading');
   };
 
@@ -433,6 +503,19 @@ export default function GradingPage() {
     setIsSubmitting(true);
 
     try {
+      // Build aiRubric payload with AI + teacher per-criteria scores and comments
+      const aiRubric = JSON.stringify({
+        summary: aiResult?.summary || '',
+        rubricScores: rubricScores.map(r => ({
+          name: r.name,
+          weight: r.weight,
+          aiPoints: parseFloat(r.ai) || 0,
+          aiComment: r.aiComment || '',
+          gvPoints: parseFloat(r.gvRef) || 0,
+          gvComment: r.gvComment || '',
+        })),
+      });
+
       // If AI was graded, persist aiScore first, then teacherScore
       if (aiResult?.score != null) {
         await authFetch('/api/submissions', {
@@ -443,6 +526,7 @@ export default function GradingPage() {
             aiScore: aiResult.score,
             teacherScore: teacherTotal,
             teacherComment,
+            aiRubric,
           }),
         });
       } else {
@@ -722,7 +806,7 @@ export default function GradingPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => handleEnterGrading(s.id)}
+                        onClick={() => handleEnterGrading(s)}
                         className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-bold hover:bg-primary-container transition-colors"
                       >
                         {s.status === SUBMISSION_STATUS.RETURNED ? 'Xem lại' : 'Chấm bài'}
@@ -753,37 +837,60 @@ export default function GradingPage() {
           </div>
           <div className="flex gap-0 h-[calc(100vh-200px)] -mx-10 -mb-12 rounded-t-2xl overflow-hidden border border-outline-variant/15">
             {/* Left: Essay */}
-            <section className="w-[45%] bg-surface-container-lowest p-10 overflow-y-auto border-r border-outline-variant/30 flex justify-center">
+            <section className="w-[40%] bg-surface-container-lowest p-8 overflow-y-auto border-r border-outline-variant/30 flex justify-center">
               <div className="max-w-2xl w-full">
-                <header className="mb-10">
-                  <h2 className="font-headline text-3xl font-black text-primary mb-2">
+                <header className="mb-8">
+                  <h2 className="font-headline text-2xl font-black text-primary mb-2">
                     {essayData?.studentName || student?.studentName || 'Học sinh'}
                   </h2>
-                  <div className="flex gap-4 text-sm text-slate-500 font-medium">
+                  <div className="flex gap-3 text-xs text-slate-500 font-medium flex-wrap">
                     <span>{CLASSES.find(c => c.id === selectedClass)?.name}</span>
                     <span className="text-outline-variant">•</span>
                     <span>{EXAMS.find(e => e.id === selectedExam)?.title}</span>
                   </div>
                 </header>
-                <article className="font-body text-lg leading-relaxed text-on-surface/90 space-y-6 text-justify">
+                <article className="font-body text-base leading-relaxed text-on-surface/90 text-justify space-y-6">
                   {!essayData?.answers?.length && (
                     <p className="text-slate-400 italic">Đang tải bài làm...</p>
                   )}
                   {essayData?.answers?.map((a, i) => (
-                    <p key={a.questionId || i}>
-                      {a.content || '(Chưa có nội dung)'}
-                    </p>
+                    <div key={a.questionId || i} className="border border-secondary/20 rounded-xl p-5 bg-white/50">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-secondary/10 text-secondary text-xs font-bold shrink-0">
+                          {i + 1}
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-xs font-bold text-secondary/70 uppercase tracking-wide mb-1">
+                            Câu hỏi
+                          </p>
+                          <p className="text-sm font-semibold text-primary leading-snug">
+                            {a.questionContent || '(Không có nội dung câu hỏi)'}
+                          </p>
+                        </div>
+                        {a.questionPoints && (
+                          <span className="text-xs text-secondary/60 font-medium shrink-0">
+                            {a.questionPoints} đ
+                          </span>
+                        )}
+                      </div>
+                      <div className="ml-0 border-l-2 border-outline-variant/40 pl-4">
+                        <p className="text-xs font-bold text-outline/70 uppercase tracking-wide mb-1">Trả lời</p>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                          {a.content || <em className="text-slate-300">(Chưa có nội dung)</em>}
+                        </p>
+                      </div>
+                    </div>
                   ))}
                 </article>
-                <footer className="mt-12 pt-6 border-t border-outline-variant/20 flex justify-between items-center text-sm text-slate-400 italic">
-                  <span>{essayData?.answers?.length || 0} câu trả lời</span>
+                <footer className="mt-10 pt-5 border-t border-outline-variant/20 flex justify-between items-center text-xs text-slate-400 italic">
+                  <span>{essayData?.answers?.length || 0} câu (hiển thị đầy đủ)</span>
                   <span>{essayData?.studentName ? 'Từ học sinh' : '—'}</span>
                 </footer>
               </div>
             </section>
 
             {/* Right: Grading */}
-            <section className="w-[55%] bg-surface p-10 overflow-y-auto">
+            <section className="w-[60%] bg-surface p-8 overflow-y-auto">
               <div className="max-w-3xl mx-auto space-y-8">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
@@ -800,14 +907,14 @@ export default function GradingPage() {
                     )}
                     <button
                       onClick={handleAiGrade}
-                      disabled={aiGrading || student.status === SUBMISSION_STATUS.RETURNED}
+                      disabled={aiGrading}
                       className="flex items-center gap-1.5 bg-secondary hover:bg-secondary/90 disabled:opacity-50 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-colors"
                     >
                       <span className="material-symbols-outlined text-sm" style={FILL_SETTINGS}>
                         auto_awesome
                       </span>
                       {aiGrading ? 'Đang chấm...' :
-                       student.status === SUBMISSION_STATUS.RETURNED ? 'Đã chấm rồi' : 'Chấm bằng AI'}
+                       student.status === SUBMISSION_STATUS.RETURNED ? 'Chấm lại bằng AI' : 'Chấm bằng AI'}
                     </button>
                     <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                       student.status === SUBMISSION_STATUS.RETURNED
@@ -825,7 +932,7 @@ export default function GradingPage() {
                     <thead>
                       <tr className="bg-primary/5 text-primary text-xs font-label uppercase tracking-widest border-b border-outline-variant/20">
                         <th className="px-6 py-4">Tiêu chí</th>
-                        <th className="px-6 py-4 text-center">%</th>
+                        <th className="px-4 py-4 text-center">%</th>
                         <th className="px-6 py-4 text-center">AI</th>
                         <th className="px-6 py-4 text-center">GV</th>
                       </tr>
@@ -840,45 +947,61 @@ export default function GradingPage() {
                             <div className="font-bold">{row.name}</div>
                             <div className="text-xs text-slate-400 mt-0.5">{row.desc}</div>
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-4 py-4 text-center">
                             <span className="text-xs font-bold text-outline px-2 py-0.5 bg-surface-container-low rounded-full">
                               {row.weight > 0 ? `${row.weight}%` : '—'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="font-bold text-secondary text-lg">{row.ai || '—'}</div>
-                            {row.aiComment && (
-                              <div className="text-[10px] text-secondary/60 leading-tight mt-0.5 max-w-[120px] mx-auto">{row.aiComment}</div>
-                            )}
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col items-center">
+                              <div className="font-bold text-secondary text-lg">{row.ai || '—'}</div>
+                              {row.aiComment && (
+                                <div className="text-xs text-secondary/60 leading-tight mt-1 max-w-[140px] text-center italic">{row.aiComment}</div>
+                              )}
+                            </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              className="w-16 bg-white border-[0.5px] border-outline-variant/30 rounded focus:ring-2 focus:ring-primary py-1.5 text-center font-medium"
-                              value={row.gvRef}
-                              onChange={e => {
-                                const next = [...rubricScores];
-                                next[idx] = { ...next[idx], gvRef: e.target.value };
-                                setRubricScores(next);
-                              }}
-                              type="number"
-                              min="0"
-                              max="10"
-                              step="0.1"
-                            />
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col items-center gap-1.5">
+                              <input
+                                className="w-16 bg-white border-[0.5px] border-outline-variant/30 rounded focus:ring-2 focus:ring-primary py-1.5 text-center font-medium"
+                                value={row.gvRef}
+                                onChange={e => {
+                                  const next = [...rubricScores];
+                                  next[idx] = { ...next[idx], gvRef: e.target.value };
+                                  setRubricScores(next);
+                                }}
+                                type="number"
+                                min="0"
+                                max="10"
+                                step="0.1"
+                                placeholder="—"
+                              />
+                              <textarea
+                                className="w-full bg-white border-[0.5px] border-outline-variant/30 rounded-lg px-2 py-1.5 text-xs leading-snug resize-none focus:ring-1 focus:ring-primary/30 focus:border-primary outline-none"
+                                value={row.gvComment}
+                                onChange={e => {
+                                  const next = [...rubricScores];
+                                  next[idx] = { ...next[idx], gvComment: e.target.value };
+                                  setRubricScores(next);
+                                }}
+                                rows={2}
+                                placeholder="Nhận xét tiêu chí này..."
+                              />
+                            </div>
                           </td>
                         </tr>
                       ))}
                       <tr className="bg-primary text-white">
-                        <td className="px-6 py-5 font-headline font-bold text-lg uppercase tracking-wider">
-                          Tổng điểm
+                        <td className="px-6 py-4 font-headline font-bold text-lg uppercase tracking-wider">
+                          Tổng điểm (thang 10)
                         </td>
-                        <td className="px-6 py-5 text-center">
+                        <td className="px-4 py-4 text-center">
                           <span className="text-xs font-bold text-blue-200">100%</span>
                         </td>
-                        <td className="px-6 py-5 font-headline font-black text-2xl text-blue-200 text-center">
-                          {rubricScores.reduce((s, r) => s + (parseFloat(r.ai) || 0), 0).toFixed(1)}
+                        <td className="px-6 py-4 font-headline font-black text-2xl text-blue-200 text-center">
+                          {aiResult?.score != null ? aiResult.score.toFixed(1) : '—'}
                         </td>
-                        <td className="px-6 py-5 text-center">
+                        <td className="px-6 py-4 text-center">
                           <div className="w-16 mx-auto text-center font-headline font-bold text-2xl">
                             {teacherTotal.toFixed(1)}
                           </div>
@@ -888,13 +1011,15 @@ export default function GradingPage() {
                   </table>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold">
+                {/* AI Summary */}
+                <div className="space-y-2">
+                  <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold flex items-center gap-2">
+                    <span className="material-symbols-outlined text-secondary text-sm" style={FILL_SETTINGS}>auto_awesome</span>
                     NHẬN XÉT TỪ AI
                   </label>
-                  <div className="p-6 bg-secondary/5 border-l-4 border-secondary rounded-r-xl italic text-[#005142] leading-relaxed relative">
+                  <div className="p-5 bg-secondary/5 border-l-4 border-secondary rounded-r-xl italic text-[#005142] leading-relaxed relative">
                     <span
-                      className="material-symbols-outlined absolute top-4 right-4 text-secondary/20 text-4xl"
+                      className="material-symbols-outlined absolute top-3 right-3 text-secondary/20 text-3xl"
                       style={FILL_SETTINGS}
                     >
                       format_quote
@@ -903,23 +1028,25 @@ export default function GradingPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold">
+                {/* Teacher Overall Comment */}
+                <div className="space-y-2">
+                  <label className="text-xs font-label text-slate-500 uppercase tracking-widest font-bold flex items-center gap-2">
+                    <span className="material-symbols-outlined text-tertiary text-sm" style={FILL_SETTINGS}>history_edu</span>
                     NHẬN XÉT CỦA GIÁO VIÊN
                   </label>
                   <textarea
-                    className="w-full bg-white border-[0.5px] border-outline-variant/30 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl p-6 shadow-sm leading-relaxed text-slate-700 transition-all"
-                    placeholder="Nhập nhận xét cho học sinh..."
-                    rows={4}
+                    className="w-full bg-white border-[0.5px] border-outline-variant/30 focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl p-5 shadow-sm leading-relaxed text-slate-700 transition-all text-sm"
+                    placeholder="Nhập nhận xét tổng quan cho học sinh..."
+                    rows={3}
                     value={teacherComment}
                     onChange={e => setTeacherComment(e.target.value)}
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-4 pt-6 border-t border-outline-variant/10">
+                <div className="flex items-center justify-end gap-4 pt-4 border-t border-outline-variant/10">
                   <button
                     onClick={goBack}
-                    className="px-8 py-3 text-slate-500 font-bold hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors"
+                    className="px-6 py-3 text-slate-500 font-bold hover:text-primary hover:bg-surface-container-low rounded-lg transition-colors"
                   >
                     Bỏ qua
                   </button>

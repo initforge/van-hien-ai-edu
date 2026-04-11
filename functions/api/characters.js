@@ -1,4 +1,5 @@
 import { cachedJson } from './_cache.js';
+import { generateCharacterSystemPrompt } from './_characterPrompt.js';
 
 async function logActivity(env, user, action, targetType, targetId, details) {
   try {
@@ -87,11 +88,23 @@ export async function onRequestPost({ request, env, data }) {
     const now = new Date().toISOString();
     const shortInitials = initials.trim().toUpperCase().slice(0, 3);
 
+    // ── Generate system prompt ────────────────────────────────────────────────
+    // Priority: teacher-provided > auto-generated from work > null
+    let finalPrompt = systemPrompt || null;
+    if (!finalPrompt && workId) {
+      try {
+        finalPrompt = await generateCharacterSystemPrompt(env.DB, id, name, role || '', workId);
+      } catch (e) {
+        console.warn('generateCharacterSystemPrompt failed:', e);
+        // non-fatal: character still created, just no auto-prompt
+      }
+    }
+
     await env.DB.prepare(
       `INSERT INTO characters (id, name, initials, role, description, personality, system_prompt, work_id, teacher_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, name, shortInitials, role || null, description || null,
-       personality || null, systemPrompt || null, workId || null, user.id, now).run();
+       personality || null, finalPrompt, workId || null, user.id, now).run();
 
     await logActivity(env, user, 'character_created', 'character', id, JSON.stringify({ name, workId }));
 

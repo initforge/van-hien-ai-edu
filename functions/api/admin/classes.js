@@ -247,6 +247,17 @@ export async function onRequestDelete({ env, data, request }) {
     ).bind(deleteId).all();
     const submissionIds = (subIds.results || []).map(s => s.id);
 
+    // Get student IDs in this class (before deleting enrollments)
+    const studentIds = await env.DB.prepare(
+      "SELECT student_id FROM class_students WHERE class_id = ?"
+    ).bind(deleteId).all();
+    const studentIdList = (studentIds.results || []).map(s => s.student_id);
+
+    const deleteStudents = studentIdList.length > 0
+      ? env.DB.prepare("DELETE FROM users WHERE id IN (" + studentIdList.map(() => '?').join(',') + ")")
+          .bind(...studentIdList).run()
+      : Promise.resolve();
+
     await Promise.all([
       // Delete answers for all submissions (parallel)
       ...submissionIds.map(sid =>
@@ -258,8 +269,9 @@ export async function onRequestDelete({ env, data, request }) {
         .bind(deleteId).run(),
       env.DB.prepare("DELETE FROM exams WHERE class_id = ?").bind(deleteId).run(),
       env.DB.prepare("DELETE FROM class_students WHERE class_id = ?").bind(deleteId).run(),
+      deleteStudents,
+      env.DB.prepare("DELETE FROM classes WHERE id = ?").bind(deleteId).run(),
     ]);
-    await env.DB.prepare("DELETE FROM classes WHERE id = ?").bind(deleteId).run();
 
     await logActivity(env, data.user, 'delete_class', 'class', deleteId, `Xóa lớp: ${deleteId}`);
     return cachedJson({ success: true }, { profile: 'nocache' });

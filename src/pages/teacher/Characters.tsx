@@ -5,8 +5,6 @@ import { formatTimeAgo } from '../../lib/utils';
 import { FILL_SETTINGS } from '../../lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Tab = "list" | "history";
-
 interface TeacherCharacter {
   id: string;
   name: string;
@@ -22,15 +20,6 @@ interface TeacherCharacter {
   createdAt: string;
 }
 
-interface ChatThread {
-  id: string;
-  characterName: string;
-  studentName: string;
-  workId: string;
-  createdAt: string;
-  messageCount: number;
-}
-
 // ─── Test Chat Modal ───────────────────────────────────────────────────────────
 function TestChatModal({
   characterId,
@@ -41,6 +30,7 @@ function TestChatModal({
   characterId: string;
   characterName: string;
   systemPrompt: string;
+  systemPromptOverride?: string; // teacher's custom prompt from edit form
   onClose: () => void;
 }) {
   const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
@@ -66,6 +56,7 @@ function TestChatModal({
         body: JSON.stringify({
           messages: [...messagesRef.current, { role: 'user', text: userText }],
           characterId,
+          systemPrompt: systemPromptOverride || undefined, // send custom prompt if teacher edited it
         }),
       });
 
@@ -170,79 +161,6 @@ function TestChatModal({
   );
 }
 
-// ─── Chat Thread Detail Modal ─────────────────────────────────────────────────
-interface ThreadMessage {
-  id: string;
-  role: string;
-  content: string;
-  createdAt: string;
-}
-
-function ThreadDetailModal({
-  threadId,
-  onClose,
-}: {
-  threadId: string;
-  onClose: () => void;
-}) {
-  const { data, isLoading } = useSWR<{ threadId: string; messages: ThreadMessage[] }>(
-    `/api/chat?threadId=${threadId}`,
-    fetcher
-  );
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="relative z-10 bg-surface-container-lowest rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col animate-[fadeIn_0.2s_ease-out]"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20 shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-primary" style={FILL_SETTINGS}>chat</span>
-            <span className="font-headline font-bold text-primary">Nội dung cuộc trò chuyện</span>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-low transition-colors">
-            <span className="material-symbols-outlined text-xl text-outline">close</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
-          {isLoading ? (
-            <div className="text-center py-8 text-slate-400">
-              <span className="material-symbols-outlined text-3xl animate-spin">sync</span>
-              <p className="mt-2 text-sm">Đang tải...</p>
-            </div>
-          ) : !data?.messages?.length ? (
-            <div className="text-center py-8 text-slate-400">Chưa có tin nhắn.</div>
-          ) : (
-            data.messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-primary text-white rounded-br-md'
-                    : 'bg-surface-container-high text-on-surface rounded-bl-md'
-                }`}>
-                  {msg.content}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="px-6 py-3 border-t border-outline-variant/20 shrink-0">
-          <p className="text-xs text-outline text-center">
-            {data?.messages?.length ?? 0} tin nhắn
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Prompt Guide ──────────────────────────────────────────────────────────────
 function PromptGuideModal({ onClose }: { onClose: () => void }) {
   return (
@@ -310,35 +228,30 @@ function PromptGuideModal({ onClose }: { onClose: () => void }) {
 
 // ─── Main CharactersPage ───────────────────────────────────────────────────────
 export default function CharactersPage() {
-  const [tab, setTab] = useState<Tab>("list");
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [showPromptGuide, setShowPromptGuide] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [testChar, setTestChar] = useState<{ name: string; prompt: string } | null>(null);
-  const [viewThreadId, setViewThreadId] = useState<string | null>(null);
-  const [threadFilterClass, setThreadFilterClass] = useState<string>('');
+  const [testChar, setTestChar] = useState<{ id: string; name: string; prompt: string } | null>(null);
 
   // ── API data ────────────────────────────────────────────────────────────────
   const { data: charactersData, isLoading, mutate } = useSWR('/api/characters', fetcher);
-  const { data: chatThreadsData } = useSWR(
-    `/api/teacher/chat-threads${threadFilterClass ? `?classId=${threadFilterClass}` : ''}`,
-    fetcher
-  );
   const { data: worksData } = useSWR('/api/works', fetcher);
-  const { data: classesData } = useSWR('/api/classes', fetcher);
 
   const characters: TeacherCharacter[] = charactersData?.data ?? [];
-  const chatThreads: ChatThread[] = chatThreadsData?.threads ?? [];
   const works = worksData?.data ?? [];
-  const classes = classesData?.data ?? [];
   const selectedChar = characters.find(c => c.id === selectedCharId) ?? null;
 
   // ── Config panel form state ─────────────────────────────────────────────────
   const [editForm, setEditForm] = useState<Partial<TeacherCharacter>>({});
+
+  // Sync editForm when selectedChar changes — useEffect to avoid React render-phase violation
   useEffect(() => {
-    if (selectedChar) setEditForm(selectedChar);
-    else setEditForm({});
-  }, [selectedChar]);
+    if (selectedChar && editForm.id !== selectedChar.id) {
+      setEditForm(selectedChar);
+    } else if (!selectedCharId && Object.keys(editForm).length > 0) {
+      setEditForm({});
+    }
+  }, [selectedCharId, selectedChar?.id, editForm.id]);
 
   // ── Auto initials from name ─────────────────────────────────────────────────
   const getInitials = (name: string) =>
@@ -451,16 +364,11 @@ export default function CharactersPage() {
       {/* Modals */}
       {testChar && (
         <TestChatModal
-          characterId={testChar.id ?? testChar.name}
+          characterId={testChar.id}
           characterName={testChar.name}
           systemPrompt={testChar.prompt}
+          systemPromptOverride={testChar.prompt}
           onClose={() => setTestChar(null)}
-        />
-      )}
-      {viewThreadId && (
-        <ThreadDetailModal
-          threadId={viewThreadId}
-          onClose={() => setViewThreadId(null)}
         />
       )}
       {showPromptGuide && (
@@ -516,28 +424,8 @@ export default function CharactersPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex space-x-12 border-b border-outline-variant/20">
-        <button
-          onClick={() => setTab("list")}
-          className={`pb-4 relative transition-all ${tab === "list" ? "text-primary font-bold" : "text-slate-500 hover:text-primary"}`}
-        >
-          Danh sách nhân vật
-          {tab === "list" && <span className="absolute -bottom-[1px] left-0 w-full h-[2px] bg-primary"></span>}
-        </button>
-        <button
-          onClick={() => setTab("history")}
-          className={`pb-4 relative transition-all ${tab === "history" ? "text-primary font-bold" : "text-slate-500 hover:text-primary"}`}
-        >
-          Lịch sử chat HS
-          <span className="ml-2 bg-tertiary/10 text-tertiary px-2 py-0.5 rounded-full text-[10px] font-bold">{chatThreads.length}</span>
-          {tab === "history" && <span className="absolute -bottom-[1px] left-0 w-full h-[2px] bg-primary"></span>}
-        </button>
-      </div>
-
-      {/* ═══ TAB: Danh sách nhân vật ═══ */}
-      {tab === "list" && (
-        <div className="grid grid-cols-12 gap-10">
+      {/* ═══ Nhân vật ═══ */}
+      <div className="grid grid-cols-12 gap-10">
           <div className="col-span-12 lg:col-span-8 space-y-6">
             <div className="bg-white/80 backdrop-blur-md shadow-sm rounded-2xl overflow-hidden border-[0.5px] border-outline-variant/30">
               {isLoading ? (
@@ -690,6 +578,7 @@ export default function CharactersPage() {
                     <button
                       type="button"
                       onClick={() => setTestChar({
+                        id: selectedChar.id,
                         name: selectedChar.name,
                         prompt: editForm.systemPrompt ?? selectedChar.systemPrompt ?? '',
                       })}
@@ -712,70 +601,6 @@ export default function CharactersPage() {
             )}
           </div>
         </div>
-      )}
-
-      {/* ═══ TAB: Lịch sử chat HS ═══ */}
-      {tab === "history" && (
-        <div className="space-y-6">
-          {/* Filter bar */}
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-secondary uppercase tracking-wider">Lọc theo lớp:</span>
-            <div className="relative">
-              <select
-                value={threadFilterClass}
-                onChange={e => setThreadFilterClass(e.target.value)}
-                className="appearance-none bg-white border border-outline-variant/30 rounded-lg px-4 py-2 pr-10 text-sm font-medium focus:ring-1 focus:ring-primary/20 text-on-surface cursor-pointer"
-              >
-                <option value="">Tất cả lớp</option>
-                {classes.map((c: { id: string; name: string }) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
-            </div>
-            {threadFilterClass && (
-              <button onClick={() => setThreadFilterClass('')} className="text-xs text-primary hover:underline font-semibold">
-                ✕ Bỏ lọc
-              </button>
-            )}
-            <span className="ml-auto text-xs text-outline">{chatThreads.length} cuộc trò chuyện</span>
-          </div>
-
-          {chatThreads.length === 0 && (
-            <div className="text-center py-12 text-slate-400">
-              <span className="material-symbols-outlined text-4xl mb-2 block">chat_bubble_outline</span>
-              <p>Chưa có lịch sử chat nào.</p>
-            </div>
-          )}
-          {chatThreads.map(thread => (
-            <div
-              key={thread.id}
-              className="bg-white/80 backdrop-blur-md p-6 rounded-2xl border-[0.5px] border-outline-variant/30 hover:shadow-md transition-all cursor-pointer group"
-              onClick={() => setViewThreadId(thread.id)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm flex-shrink-0">
-                    {thread.characterName?.charAt(0) ?? '?'}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <h4 className="font-bold text-primary">{thread.characterName}</h4>
-                      <span className="text-xs text-outline">•</span>
-                      <span className="text-xs text-slate-500 italic">{thread.studentName}</span>
-                    </div>
-                    <p className="text-sm text-slate-600 line-clamp-1">{thread.messageCount} tin nhắn • Nhấn để xem chi tiết</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 flex-shrink-0">
-                  <span className="text-xs text-slate-400">{formatTimeAgo(thread.createdAt)}</span>
-                  <span className="material-symbols-outlined text-outline group-hover:text-primary transition-colors">chevron_right</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

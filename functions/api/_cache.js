@@ -28,6 +28,7 @@ export function withCache(response, profile = 'dynamic') {
   
   // Add Vary header for proper cache key discrimination
   headers.set('Vary', 'Accept-Encoding');
+  headers.set('Access-Control-Allow-Origin', '*');
   
   return new Response(response.body, {
     status: response.status,
@@ -45,6 +46,7 @@ export function cachedJson(data, { status = 200, profile = 'dynamic' } = {}) {
   const body = JSON.stringify(data);
   const headers = {
     'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
     'Vary': 'Accept-Encoding',
     ...(CACHE_PROFILES[profile] || CACHE_PROFILES.dynamic),
   };

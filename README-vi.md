@@ -1,126 +1,42 @@
 # Văn Học AI — Nền tảng Dạy & Học Ngữ Văn
 
-> Nền tảng học Ngữ Văn THCS có trợ giúp AI.
+> Nền tảng học Ngữ Văn THCS có trợ giúp AI — học sinh trò chuyện với nhân vật văn học, khám phá đa vũ trụ, nhận phản hồi chấm điểm tự động.
 
-## Công nghệ
+[![Build](https://img.shields.io/badge/Build-PASSING-green?style=flat-square)](#)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](#)
 
-| Lớp | Công nghệ |
-|-----|-----------|
-| Frontend | React 19 + Vite + Tailwind CSS v4 |
-| Backend | Cloudflare Pages Functions |
-| Database | Cloudflare D1 (SQLite) |
-| Auth | JWT (jose) |
-| Data Fetching | SWR |
-| Testing | Playwright |
+### Công nghệ sử dụng
 
-## Cấu trúc
+| Lớp | Stack |
+|-----|-------|
+| **Frontend** | ![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black) ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=flat-square&logo=tailwindcss&logoColor=white) |
+| **Backend** | ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?style=flat-square&logo=cloudflare&logoColor=white) ![D1](https://img.shields.io/badge/D1-SQLite-336791?style=flat-square&logo=cloudflare) |
+| **AI** | ![Gemma](https://img.shields.io/badge/Gemma%203-8E75B2?style=flat-square&logo=googlegemini&logoColor=white) ![Workers AI](https://img.shields.io/badge/Workers_AI-Cloudflare-F38020?style=flat-square&logo=cloudflare&logoColor=white) |
+| **Auth** | ![JWT](https://img.shields.io/badge/JWT-jose-000000?style=flat-square) |
+| **Data Fetching** | ![SWR](https://img.shields.io/badge/SWR-000000?style=flat-square&logo=swr) |
 
-```
-van-hien-ai-edu/
-├── src/
-│   ├── pages/
-│   │   ├── student/          # Trang học sinh
-│   │   └── teacher/          # Trang giáo viên
-│   ├── components/
-│   │   ├── layout/
-│   │   └── ui/
-│   ├── constants/              # Dữ liệu dùng chung (storylines, rubric, AI review)
-│   │   ├── storylines.ts
-│   │   ├── grading.ts
-│   │   └── aiReview.ts
-│   └── contexts/
-│       └── AuthContext.tsx    # Auth JWT + route bảo vệ
-├── functions/api/             # Cloudflare Pages Functions
-│   ├── _middleware.js         # Xác thực JWT
-│   ├── _cache.js             # Tiện ích cache
-│   ├── auth.js                # Đăng nhập
-│   ├── chat.js                # Chat AI (streaming)
-│   ├── works.js               # CRUD tác phẩm
-│   ├── exams.js               # CRUD đề thi
-│   ├── submissions.js         # Nộp bài + chấm điểm
-│   ├── classes.js             # Lấy lớp học
-│   ├── storylines.js          # GET/POST đa vũ trụ
-│   └── stats.js               # Thống kê dashboard
-├── database/
-│   ├── schema/               # Migrations D1 (001-014 + 999-indexes)
-│   │   ├── 001-users.sql → 014-logs.sql
-│   │   └── 999-indexes.sql
-│   └── seed/                 # Dữ liệu mẫu (001-005)
-├── db.legacy/                 # Legacy flat files (KHÔNG SỬ DỤNG)
-│   ├── schema.sql
-│   └── seed.sql
-└── e2e/                       # Playwright E2E
-```
+### Tại sao có hệ thống này?
 
-## Tính năng
+Việc dạy và học Ngữ Văn hiện nay chủ yếu dựa vào đọc thụ động và học thuộc lòng. Học sinh hiếm khi đồng cảm với nhân vật, giáo viên thiếu công cụ để phản hồi cá nhân hóa ở quy mô lớp. Hệ thống này thu hẹp khoảng cách đó — học sinh bước vào tác phẩm qua chat nhân vật AI và câu chuyện nhiều nhánh, giáo viên nhận hỗ trợ chấm bài theo rubric với phản hồi chi tiết từng tiêu chí.
 
-### Học sinh
-- Làm bài thi tự động lưu
-- Chat với nhân vật văn học AI (streaming)
-- Khám phá đa vũ trụ
-- Xem kết quả và nhận xét chấm AI
+### Điểm nổi bật
 
-### Giáo viên
-- Quản lý thư viện tác phẩm
-- Tạo ngân hàng đề thi
-- Chấm bài với rubric
-- Quản lý nhân vật AI
-- Dashboard thống kê
+- **Chat nhân vật** — Học sinh trò chuyện real-time với nhân vật văn học AI (phản hồi streaming, lịch sử hội thoại)
+- **Đa vũ trụ** — Câu chuyện nhiều nhánh cho phép khám phá kịch bản "điều gì sẽ xảy ra nếu" và xem hậu quả
+- **Chấm điểm AI theo rubric** — Mỗi bài nộp được chấm theo rubric có cấu hình; AI phản hồi chi tiết từng tiêu chí với điểm số
+- **Chạy tại Edge** — Mọi suy luận AI chạy ở edge qua Workers AI; cold start dưới 100ms, deploy toàn cầu từ đầu
 
-## Khởi động
+### Bắt đầu nhanh
 
 ```bash
-# Cài đặt
-npm install
-
-# Chạy local
-npm run dev
-
-# Build production
-npm run build
-
-# Chạy E2E
-npx playwright test
+npm install && npm run dev
 ```
 
-### Setup Database (Local)
+### Tài liệu
 
-```bash
-# Apply migrations (runs all 001-014 + 999-indexes)
-npm run db:schema
-
-# Seed dữ liệu (runs 001-005 in order)
-npm run db:seed
-
-# Hoặc dev server với DB local
-npm run e2e:server
-```
-
-### Deploy
-
-```bash
-# Deploy lên Cloudflare Pages
-npx wrangler pages deploy dist
-
-# Apply migrations lên production
-wrangler d1 migrations apply vanhien-db --remote
-```
-
-## Tài khoản demo
-
-| Vai trò | Email | Mật khẩu |
-|---------|-------|----------|
-| Giáo viên | `an@vanhocai.edu.vn` | (MVP: chỉ cần email) |
-| Học sinh | `mai@vanhocai.edu.vn` | (MVP: chỉ cần email) |
-
-## Tech Debt
-
-| # | Vấn đề | Ưu tiên | Trạng thái |
-|---|---------|---------|------------|
-| 1 | Grading UI bỏ qua input giáo viên (hardcoded 8.5) | P0 | ✅ Đã fix |
-| 2 | Câu trả lời bài thi không lưu vào DB | P0 | ✅ Đã fix |
-| 3 | Hardcoded studentId trong ExamDetail | P0 | ✅ Đã fix |
-| 4 | E2E test credentials không khớp | P1 | ✅ Đã fix |
-| 5 | E2E utils ghi vào production DB | P1 | ✅ Đã fix |
-
-> Xem `.claude/memory/` để biết báo cáo audit đầy đủ.
+| Tài liệu | Mô tả |
+|---------|-------|
+| [Technical Spec](docs/technical-spec.md) | Kiến trúc, bài toán khó, tối ưu — tiếng Anh |
+| [Tài liệu kỹ thuật](docs/vi-technical-spec.md) | Kiến trúc, bài toán khó, tối ưu — tiếng Việt |
+| [User Guide](docs/user-guide.md) | Cách dùng hệ thống — tiếng Anh |
+| [Hướng dẫn sử dụng](docs/vi-user-guide.md) | Cách dùng hệ thống — tiếng Việt |

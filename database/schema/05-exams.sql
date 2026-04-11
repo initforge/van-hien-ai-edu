@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS submissions (
                     CHECK(status IN ('draft','submitted','ai_graded','returned')),
   ai_score        REAL,
   ai_comment      TEXT,
+  ai_rubric       TEXT,
   teacher_score   REAL,
   teacher_comment TEXT,
   submitted_at    TEXT,

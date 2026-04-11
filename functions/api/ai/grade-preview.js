@@ -124,8 +124,15 @@ export async function onRequestPost({ request, env, data }) {
       comment: String(s.comment || ''),
     }));
 
-    const totalScore = grading.totalScore !== null && grading.totalScore !== undefined
-      ? Number(grading.totalScore.toFixed(1))
+    // ALWAYS compute weighted total: sum of (points × weight) / 100, capped at 10.
+    // Ignore AI's raw totalScore — AI may return a raw sum > 10.
+    const totalScore = rubricScores.length
+      ? Math.min(10, Number(
+          (rubricScores.reduce((sum, s) => {
+            const crit = criteria.find(c => c.name.toLowerCase().trim() === s.name.toLowerCase().trim());
+            return sum + s.points * (crit?.weight ?? 0);
+          }, 0) / 100).toFixed(1)
+        ))
       : null;
 
     const payload = {

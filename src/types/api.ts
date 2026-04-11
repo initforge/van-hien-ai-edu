@@ -113,6 +113,7 @@ export interface Exam {
   status: 'draft' | 'published' | 'ai_preview';
   deadline: string | null;
   createdAt: string;
+  questionCount?: number;
   // exam-detail.js extended fields
   passage?: string;
   author?: string;
@@ -152,6 +153,11 @@ export interface Submission {
   teacherScore: number | null;
   teacherComment: string | null;
   submittedAt: string;
+  // AI rubric breakdown (set when teacher returns graded submission)
+  aiRubric?: {
+    summary?: string;
+    rubricScores: { name: string; weight: number; aiPoints: number; aiComment: string }[];
+  } | null;
   // Grading page enriched fields (from exam + questions)
   graded?: number;
   total?: number;
@@ -166,13 +172,13 @@ export interface Character {
   initials: string;
   role: string;
   description: string;
-  personality: string | null;
-  systemPrompt: string | null;
-  active: boolean;
+  personality?: string | null;
+  systemPrompt?: string | null;
+  active?: boolean;
   workId: string;
   workTitle: string | null;
   chatCount?: number;
-  createdAt: string;
+  createdAt?: string;
 }
 
 // ─── Chat ──────────────────────────────────────────────────────────────────────

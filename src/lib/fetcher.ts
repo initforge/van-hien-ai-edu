@@ -24,19 +24,6 @@ export const fetcher = (url: string) => {
   });
 };
 
-/** Fetch wrapper WITH auth — use for POST/PATCH/DELETE to ensure token is sent */
-export const authFetch = (url: string, options: RequestInit = {}) => {
-  const token = getToken();
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-};
-
 /** Store token in localStorage after login */
 export const storeToken = (token: string, role: string) => {
   const key = `token_${role}`;

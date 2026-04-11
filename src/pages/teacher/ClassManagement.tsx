@@ -154,6 +154,11 @@ export default function ClassManagementPage() {
       });
       const data = await res.json();
       setImportResult({ created: data.created ?? 0, skipped: data.skipped ?? skipped, credentials: data.credentials ?? [] });
+      // Refresh students + class card count immediately so teacher sees the update
+      if ((data.created ?? 0) > 0) {
+        await mutateStudents();
+        await mutateClasses();
+      }
     } catch {
       setImportResult({ created: 0, skipped: [{ name: 'Lỗi', reason: 'Không đọc được file. Đảm bảo file là .xlsx, .xls, hoặc .csv.' }], credentials: [] });
     } finally {

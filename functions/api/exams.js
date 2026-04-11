@@ -74,12 +74,15 @@ export async function onRequestGet({ env, data, request }) {
         env.DB.prepare(
           `SELECT e.id, e.title, e.type, e.work_id AS workId, w.title AS workTitle,
                   e.class_id AS classId, c.name AS className,
-                  e.duration, e.status, e.deadline, e.created_at AS createdAt
+                  e.duration, e.status, e.deadline, e.created_at AS createdAt,
+                  COUNT(q.id) AS questionCount
            FROM exams e
            LEFT JOIN works w ON e.work_id = w.id
            LEFT JOIN classes c ON e.class_id = c.id
            JOIN class_students cs ON e.class_id = cs.class_id
+           LEFT JOIN questions q ON e.id = q.exam_id
            WHERE cs.student_id = ? AND e.status = 'published'
+           GROUP BY e.id
            ORDER BY e.created_at DESC
            LIMIT ? OFFSET ?`
         ).bind(user.id, limit, offset).all(),

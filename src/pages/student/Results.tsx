@@ -105,9 +105,38 @@ export default function StudentResultsPage() {
                       <h5 className="font-headline font-bold text-primary">Đánh giá AI</h5>
                       <span className="ml-auto text-2xl font-bold text-secondary">{aiScore != null ? aiScore.toFixed(1) : '—'}</span>
                     </div>
-                    <div className="bg-white p-4 rounded-xl border border-outline-variant/20 text-sm italic text-slate-600 font-headline leading-relaxed">
-                      {"—"}
-                    </div>
+                    {aiScore != null && r.aiRubric?.rubricScores?.length ? (
+                      <div className="space-y-4">
+                        {r.aiRubric.rubricScores.map((item) => (
+                          <div key={item.name}>
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="font-medium">{item.name}</span>
+                              <span className="font-bold text-secondary">{item.aiPoints.toFixed(1)}/10</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-secondary rounded-full transition-all"
+                                style={{ width: `${(item.aiPoints / 10) * 100}%` }}
+                              />
+                            </div>
+                            {item.aiComment && (
+                              <p className="text-xs text-slate-500 mt-1 italic">{item.aiComment}</p>
+                            )}
+                          </div>
+                        ))}
+                        {r.aiRubric.summary && (
+                          <div className="mt-4 pt-3 border-t border-secondary/20">
+                            <p className="text-sm italic text-slate-600 leading-relaxed">
+                              {r.aiRubric.summary}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-sm italic text-slate-500">
+                        {aiScore != null ? 'Chưa có nhận xét chi tiết.' : '—'}
+                      </div>
+                    )}
                   </div>
 
                   {/* Teacher Column */}
@@ -117,6 +146,29 @@ export default function StudentResultsPage() {
                       <h5 className="font-headline font-bold text-primary">Đánh giá Giáo viên</h5>
                       <span className="ml-auto text-2xl font-bold text-primary">{teacherScore != null ? teacherScore.toFixed(1) : '—'}</span>
                     </div>
+                    {teacherScore != null && r.aiRubric?.rubricScores?.length ? (
+                      <div className="space-y-4 mb-4">
+                        {r.aiRubric.rubricScores.map((item) => (
+                          (item.gvPoints != null) && (
+                            <div key={item.name}>
+                              <div className="flex justify-between text-sm mb-1">
+                                <span className="font-medium">{item.name}</span>
+                                <span className="font-bold text-tertiary">{item.gvPoints}/10</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-tertiary rounded-full transition-all"
+                                  style={{ width: `${(item.gvPoints / 10) * 100}%` }}
+                                />
+                              </div>
+                              {item.gvComment && (
+                                <p className="text-xs text-slate-500 mt-1 italic">{item.gvComment}</p>
+                              )}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    ) : null}
                     <div className="bg-primary/5 p-4 rounded-xl border border-primary/10 text-sm italic text-slate-700 font-headline leading-relaxed">
                       {r.teacherComment || "Chưa có nhận xét."}
                     </div>

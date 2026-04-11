@@ -24,7 +24,7 @@ const DEFAULT_STRUCTURE: ExamStructure = {
   part2Points: 7,
 };
 
-type Level = 'THCS' | 'THPT';
+type Level = 'THCS';
 
 // ─── Shared question editor (dùng cho cả manual exercise & manual exam) ─────
 
@@ -48,8 +48,26 @@ function QuestionEditor({
     onChange(next);
   };
 
+  const totalPoints = questions.reduce((s, q) => s + (Number(q.points) || 0), 0);
+  const isOverLimit = !examMode && totalPoints > 10;
+
   return (
     <div className="space-y-4">
+      {/* Points summary */}
+      <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold ${
+        isOverLimit
+          ? 'bg-red-50 text-error border border-red-200'
+          : questions.length > 0
+          ? 'bg-surface-container-low text-on-surface border border-outline-variant/30'
+          : 'hidden'
+      }`}>
+        <span className="material-symbols-outlined text-sm">
+          {isOverLimit ? 'warning' : 'calculate'}
+        </span>
+        {isOverLimit
+          ? `Tổng điểm: ${totalPoints.toFixed(1)}đ — vượt giới hạn 10 điểm`
+          : `Tổng điểm: ${totalPoints.toFixed(1)}đ / tối đa 10 điểm`}
+      </div>
       {questions.length === 0 && (
         <p className="text-sm text-slate-400 text-center py-8">
           Chưa có câu hỏi nào. Nhấn "Thêm câu hỏi" để bắt đầu.
@@ -129,21 +147,31 @@ function QuestionEditor({
 
 function ExerciseAiForm({
   works,
-  level,
-  onLevelChange,
+  classes,
   onApprove,
   onClose,
   loading,
 }: {
   works: { id: string; title: string }[];
-  level: Level;
-  onLevelChange: (l: Level) => void;
-  onApprove: (title: string, workId?: string) => void;
+  classes: { id: string; name: string }[];
+  onApprove: (title: string, workId?: string, classId?: string, customPrompt?: string) => void;
   onClose: () => void;
   loading: boolean;
 }) {
   const [title, setTitle] = useState('');
+  const [classId, setClassId] = useState('');
+  const [sourceMode, setSourceMode] = useState<'work' | 'prompt'>('prompt');
   const [workId, setWorkId] = useState('');
+  const [customPrompt, setCustomPrompt] = useState('');
+
+  const handleGenerate = () => {
+    if (!title.trim() || !classId) return;
+    if (sourceMode === 'work') {
+      onApprove(title.trim(), workId || undefined, classId, undefined);
+    } else {
+      onApprove(title.trim(), undefined, classId, customPrompt.trim() || undefined);
+    }
+  };
 
   return (
     <div className="mb-8 bg-white/80 backdrop-blur-md p-8 rounded-2xl border border-primary/20 shadow-lg animate-[fadeIn_0.2s_ease-out]">
@@ -154,7 +182,7 @@ function ExerciseAiForm({
           </div>
           <div>
             <h3 className="font-headline text-xl font-bold text-primary">AI tạo bài tập</h3>
-            <p className="text-xs text-slate-400">Chỉ cần tên bài tập — AI gợi ý 4 câu Đọc hiểu tự động.</p>
+            <p className="text-xs text-slate-400">Tên bài + lớp bắt buộc; nguồn: tác phẩm hoặc prompt tùy chỉnh.</p>
           </div>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
@@ -162,79 +190,110 @@ function ExerciseAiForm({
         </button>
       </div>
 
-      {/* Level selector */}
-      <div className="flex gap-3 mb-5">
-        {(['THCS', 'THPT'] as Level[]).map(l => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => onLevelChange(l)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-              level === l
-                ? 'bg-primary text-white border-primary shadow-sm'
-                : 'border-outline-variant/40 text-slate-500 hover:border-primary/40'
-            }`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-4 items-end">
-        <div className="flex-1 space-y-2">
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="space-y-2">
           <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
             Tên bài tập *
           </label>
           <input
             value={title}
             onChange={e => setTitle(e.target.value)}
-            required
             autoFocus
-            placeholder="VD: Luyện phân tích nhân vật Tấm trong Tấm Cám"
+            placeholder="VD: Luyện phân tích nhân vật Tấm"
             className="w-full bg-white border border-primary/30 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
           />
         </div>
-        <div className="w-64 space-y-2">
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-primary font-bold">
+            Lớp giao bài *
+          </label>
+          <select
+            value={classId}
+            onChange={e => setClassId(e.target.value)}
+            className="w-full bg-white border-2 border-primary/30 rounded-lg px-4 py-3 text-sm outline-none focus:border-primary/50"
+          >
+            <option value="">— Chọn lớp —</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Source mode switcher */}
+      <div className="flex gap-3 mb-4">
+        <button
+          type="button"
+          onClick={() => setSourceMode('work')}
+          className={`px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+            sourceMode === 'work'
+              ? 'bg-primary text-white border-primary shadow-sm'
+              : 'border-outline-variant/40 text-slate-500 hover:border-primary/40'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm mr-1">menu_book</span>
+          Tác phẩm
+        </button>
+        <button
+          type="button"
+          onClick={() => setSourceMode('prompt')}
+          className={`px-4 py-2 rounded-full text-xs font-bold border transition-all ${
+            sourceMode === 'prompt'
+              ? 'bg-primary text-white border-primary shadow-sm'
+              : 'border-outline-variant/40 text-slate-500 hover:border-primary/40'
+          }`}
+        >
+          <span className="material-symbols-outlined text-sm mr-1">edit</span>
+          Prompt tùy chỉnh
+        </button>
+      </div>
+
+      {/* Source content — mutually exclusive */}
+      {sourceMode === 'work' ? (
+        <div className="space-y-2 mb-4">
           <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
-            Tác phẩm (tùy chọn)
+            Chọn tác phẩm *
           </label>
           <select
             value={workId}
             onChange={e => setWorkId(e.target.value)}
             className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none"
           >
-            <option value="">— Không chọn —</option>
+            <option value="">— Chọn tác phẩm —</option>
             {works.map(w => (
               <option key={w.id} value={w.id}>{w.title}</option>
             ))}
           </select>
         </div>
-        <button
-          type="button"
-          disabled={loading || !title.trim()}
-          onClick={() => onApprove(title.trim(), workId || undefined)}
-          className="shrink-0 flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50 transition-all"
-        >
-          <span className="material-symbols-outlined text-sm">
-            {loading ? 'hourglass_empty' : 'auto_awesome'}
-          </span>
-          {loading ? 'Đang tạo...' : 'Tạo bằng AI'}
-        </button>
-      </div>
-
-      {/* Structure hint */}
-      <div className="mt-4 bg-primary/5 rounded-xl border border-primary/10 p-4">
-        <p className="text-xs font-bold text-primary mb-2 flex items-center gap-1.5">
-          <span className="material-symbols-outlined text-sm">info</span>
-          Cấu trúc AI sẽ tạo (cấp {level})
-        </p>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs text-slate-500">
-          <span>Câu 1 — Gây ấn tượng? Vì sao? (1đ)</span>
-          <span>Câu 2 — Nội dung chính (1đ)</span>
-          <span>Câu 3 — Phép tu từ + tác dụng (1đ)</span>
-          <span>Câu 4 — Viết đoạn văn {level === 'THCS' ? '150-200 chữ' : '200-300 chữ'} (2đ)</span>
+      ) : (
+        <div className="space-y-2 mb-4">
+          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
+            Prompt tùy chỉnh *
+          </label>
+          <textarea
+            value={customPrompt}
+            onChange={e => setCustomPrompt(e.target.value)}
+            rows={3}
+            placeholder="VD: Tạo 3 câu đọc hiểu + 1 câu nghị luận về nhân vật Phương Định. Mỗi câu 1-2 điểm..."
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none resize-none"
+          />
         </div>
-      </div>
+      )}
+
+      <button
+        type="button"
+        disabled={
+          loading || !title.trim() || !classId ||
+          (sourceMode === 'work' ? !workId : !customPrompt.trim())
+        }
+        onClick={handleGenerate}
+        className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50 transition-all"
+      >
+        <span className="material-symbols-outlined text-sm">
+          {loading ? 'hourglass_empty' : 'auto_awesome'}
+        </span>
+        {loading ? 'Đang tạo...' : 'Tạo bằng AI'}
+      </button>
     </div>
   );
 }
@@ -255,6 +314,7 @@ function ExerciseManualForm({
   const [title, setTitle] = useState('');
   const [workId, setWorkId] = useState('');
   const [classId, setClassId] = useState('');
+  const [duration, setDuration] = useState(45);
   const [deadline, setDeadline] = useState('');
   const [questions, setQuestions] = useState<EditableQuestion[]>([
     { content: '', type: 'essay', points: 2, rubric: '' },
@@ -279,6 +339,7 @@ function ExerciseManualForm({
           workId: workId || undefined,
           classId: classId || undefined,
           type: 'exercise',
+          duration,
           deadline: deadline || undefined,
           questions: validQuestions.map(q => ({
             content: q.content.trim(),
@@ -356,20 +417,38 @@ function ExerciseManualForm({
           </select>
         </div>
         <div className="space-y-2">
-          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
-            Lớp (tùy chọn)
+          <label className="font-label text-[10px] uppercase tracking-widest text-primary font-bold">
+            Lớp giao bài *
           </label>
           <select
             value={classId}
             onChange={e => setClassId(e.target.value)}
-            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none"
+            className="w-full bg-white border-2 border-primary/30 rounded-lg px-4 py-3 text-sm outline-none focus:border-primary/50"
           >
-            <option value="">— Giao sau —</option>
+            <option value="">— Chọn lớp —</option>
             {classes.map(c => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
+        <div className="space-y-2">
+          <label className="font-label text-[10px] uppercase tracking-widest text-primary font-bold">
+            Thời lượng *
+          </label>
+          <select
+            value={duration}
+            onChange={e => setDuration(Number(e.target.value))}
+            className="w-full bg-white border-2 border-primary/30 rounded-lg px-4 py-3 text-sm outline-none focus:border-primary/50"
+          >
+            <option value="15">15 phút</option>
+            <option value="30">30 phút</option>
+            <option value="45">45 phút</option>
+            <option value="60">60 phút</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6 mb-6">
         <div className="space-y-2">
           <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
             Hạn nộp (tùy chọn)
@@ -405,7 +484,7 @@ function ExerciseManualForm({
         </button>
         <button
           type="submit"
-          disabled={saving || !title.trim() || validQuestions.length === 0}
+          disabled={saving || !title.trim() || !classId || validQuestions.length === 0}
           className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-primary to-primary-container text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50"
         >
           <span className="material-symbols-outlined text-sm">{saving ? 'hourglass_empty' : 'save'}</span>
@@ -422,8 +501,6 @@ function ExamAiForm({
   works,
   classes,
   structure,
-  level,
-  onLevelChange,
   onApprove,
   onClose,
   loading,
@@ -431,9 +508,7 @@ function ExamAiForm({
   works: { id: string; title: string }[];
   classes: { id: string; name: string }[];
   structure: ExamStructure;
-  level: Level;
-  onLevelChange: (l: Level) => void;
-  onApprove: (title: string, workId?: string, classId?: string, duration?: number) => void;
+  onApprove: (title: string, workId?: string, classId?: string, duration?: number, customPrompts?: { part1?: string; part2?: string }) => void;
   onClose: () => void;
   loading: boolean;
 }) {
@@ -442,6 +517,8 @@ function ExamAiForm({
   const [classId, setClassId] = useState('');
   const [duration, setDuration] = useState(90);
   const [deadline, setDeadline] = useState('');
+  const [part1Prompt, setPart1Prompt] = useState('');
+  const [part2Prompt, setPart2Prompt] = useState('');
 
   return (
     <div className="mb-8 bg-white/80 backdrop-blur-md p-8 rounded-2xl border-2 border-secondary/30 shadow-lg animate-[fadeIn_0.2s_ease-out]">
@@ -462,25 +539,7 @@ function ExamAiForm({
         </button>
       </div>
 
-      {/* Level selector */}
-      <div className="flex gap-3 mb-5">
-        {(['THCS', 'THPT'] as Level[]).map(l => (
-          <button
-            key={l}
-            type="button"
-            onClick={() => onLevelChange(l)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
-              level === l
-                ? 'bg-secondary text-white border-secondary shadow-sm'
-                : 'border-outline-variant/40 text-slate-500 hover:border-secondary/40'
-            }`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-2 gap-6 mb-4">
         <div className="space-y-2">
           <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
             Tên đề *
@@ -493,21 +552,6 @@ function ExamAiForm({
             placeholder="VD: Kiểm tra HK1 — Ngữ văn 8"
             className="w-full bg-white border-2 border-secondary/30 rounded-lg px-4 py-3 text-sm outline-none focus:border-secondary/50"
           />
-        </div>
-        <div className="space-y-2">
-          <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
-            Tác phẩm (tùy chọn)
-          </label>
-          <select
-            value={workId}
-            onChange={e => setWorkId(e.target.value)}
-            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none"
-          >
-            <option value="">— Không chọn —</option>
-            {works.map(w => (
-              <option key={w.id} value={w.id}>{w.title}</option>
-            ))}
-          </select>
         </div>
         <div className="space-y-2">
           <label className="font-label text-[10px] uppercase tracking-widest text-secondary font-bold">
@@ -553,23 +597,58 @@ function ExamAiForm({
         </div>
       </div>
 
+      {/* Part 1 prompt override */}
+      <div className="space-y-2 mb-4">
+        <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
+          Prompt Phần I — Đọc hiểu (tùy chọn)
+        </label>
+        <textarea
+          rows={2}
+          value={part1Prompt}
+          onChange={e => setPart1Prompt(e.target.value)}
+          placeholder="VD: 2 câu nhận biết về thể loại + 1 câu thông hiểu về bố cục..."
+          className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none resize-none"
+        />
+      </div>
+
+      {/* Part 2 prompt override */}
+      <div className="space-y-2 mb-4">
+        <label className="font-label text-[10px] uppercase tracking-widest text-slate-500">
+          Prompt Phần II — {structure.part2Name} (tùy chọn — bỏ trống: AI tự chọn tác phẩm nếu không chọn tác phẩm)
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <textarea
+            rows={2}
+            value={part2Prompt}
+            onChange={e => setPart2Prompt(e.target.value)}
+            placeholder="VD: Câu nghị luận xã hội về lòng nhân ái..."
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none resize-none"
+          />
+          <select
+            value={workId}
+            onChange={e => setWorkId(e.target.value)}
+            className="w-full bg-white border border-outline-variant/30 rounded-lg px-4 py-3 text-sm outline-none"
+          >
+            <option value="">— Không chọn — (AI tự chọn tác phẩm)</option>
+            {works.map(w => (
+              <option key={w.id} value={w.id}>{w.title}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Structure reminder */}
       <div className="bg-secondary/5 rounded-xl border border-secondary/20 p-4 mb-6">
         <p className="text-xs font-bold text-secondary mb-2 flex items-center gap-1.5">
           <span className="material-symbols-outlined text-sm">info</span>
-          Cấu trúc đề thi AI sẽ tạo (cấp {level})
+          Cấu trúc đề thi AI sẽ tạo (THCS)
         </p>
         <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-xs text-slate-500">
-          <span>Phần I.1 — Trắc nghiệm (0.5đ)</span>
-          <span>Phần I.2 — Trả lời ngắn (1.0đ)</span>
-          <span>Phần I.3 — Cảm nhận, gây ấn tượng? (1.5đ)</span>
+          <span>Phần I.1 — Nhận biết (0.5đ)</span>
+          <span>Phần I.2 — Nhận biết/Thông hiểu (1.0đ)</span>
+          <span>Phần I.3 — Vận dụng (1.5đ)</span>
           <span>Phần II.1 — Nghị luận xã hội (2.0đ)</span>
-          <span>Phần II.2 — Nghị luận văn học (5.0đ)</span>
-          <span className="col-span-2 text-slate-400 italic">
-            {workId
-              ? 'Câu II.2 dựa trên tác phẩm đã chọn.'
-              : 'Câu II.2 tự chọn tác phẩm phù hợp.'}
-          </span>
+          <span>Phần II.2 — Nghị luận văn học (5.0đ) ← chỉ phần này dùng tác phẩm</span>
         </div>
       </div>
 
@@ -582,7 +661,10 @@ function ExamAiForm({
         </button>
         <button
           disabled={loading || !title.trim() || !classId}
-          onClick={() => onApprove(title.trim(), workId || undefined, classId || undefined, duration)}
+          onClick={() => onApprove(title.trim(), workId || undefined, classId || undefined, duration, {
+            part1: part1Prompt.trim() || undefined,
+            part2: part2Prompt.trim() || undefined,
+          })}
           className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-secondary to-secondary text-white rounded-lg font-bold shadow-md hover:shadow-lg disabled:opacity-50 transition-all"
         >
           <span className="material-symbols-outlined text-sm">
@@ -956,7 +1038,6 @@ export default function ExamBankPage() {
   const [viewExam, setViewExam] = useState<Exam | null>(null);
   const [viewExamQuestions, setViewExamQuestions] = useState<EditableQuestion[]>([]);
   const [loadingViewExam, setLoadingViewExam] = useState(false);
-  const [level, setLevel] = useState<Level>('THCS');
 
   const { data: apiExamsData, isLoading, mutate } = useSWR(
     `/api/exams${filterClass ? `?classId=${filterClass}` : ''}`,
@@ -970,15 +1051,8 @@ export default function ExamBankPage() {
 
   const filtered = apiExams.filter((e: Exam) => e.type === activeTab);
 
-  // ── Exam structure state ────────────────────────────────────────────────
-  const [examStructure, setExamStructure] = useState<ExamStructure>(DEFAULT_STRUCTURE);
-  const [editingStructure, setEditingStructure] = useState(false);
-  const [structDraft, setStructDraft] = useState<ExamStructure>(DEFAULT_STRUCTURE);
-
-  const saveStructure = () => {
-    setExamStructure(structDraft);
-    setEditingStructure(false);
-  };
+  // ── Exam structure state (cố định 3+7, không cho sửa) ─────────────────
+  const examStructure = DEFAULT_STRUCTURE;
 
   // ── AI Preview state ─────────────────────────────────────────────────────
   const [showPreview, setShowPreview] = useState(false);
@@ -1100,13 +1174,24 @@ export default function ExamBankPage() {
   };
 
   // ── AI generate ───────────────────────────────────────────────────────────
-  const handleAiGenerateExercise = async (title: string, workId?: string) => {
+  const handleAiGenerateExercise = async (
+    title: string,
+    workId?: string,
+    classId?: string,
+    customPrompt?: string
+  ) => {
     setAiLoading(true);
     try {
       const res = await authFetch('/api/ai/exam-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, workId: workId || undefined, type: 'exercise', level }),
+        body: JSON.stringify({
+          title,
+          workId: workId || undefined,
+          classId: classId || undefined,
+          type: 'exercise',
+          customPrompt: customPrompt || undefined,
+        }),
       });
       const data = await res.json();
       if (data.previewId && data.questions?.length) {
@@ -1135,7 +1220,8 @@ export default function ExamBankPage() {
     title: string,
     workId?: string,
     classId?: string,
-    duration?: number
+    duration?: number,
+    customPrompts?: { part1?: string; part2?: string }
   ) => {
     setAiLoading(true);
     try {
@@ -1143,8 +1229,14 @@ export default function ExamBankPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title, workId: workId || undefined, classId: classId || undefined,
-          type: 'exam', duration, level, structure: examStructure,
+          title,
+          workId: workId || undefined,
+          classId: classId || undefined,
+          type: 'exam',
+          duration,
+          structure: examStructure,
+          part1Prompt: customPrompts?.part1 || undefined,
+          part2Prompt: customPrompts?.part2 || undefined,
         }),
       });
       const data = await res.json();
@@ -1262,8 +1354,7 @@ export default function ExamBankPage() {
       {showCreateForm === 'exercise-ai' && (
         <ExerciseAiForm
           works={works}
-          level={level}
-          onLevelChange={setLevel}
+          classes={classes}
           onApprove={handleAiGenerateExercise}
           onClose={resetForm}
           loading={aiLoading}
@@ -1286,8 +1377,6 @@ export default function ExamBankPage() {
           works={works}
           classes={classes}
           structure={examStructure}
-          level={level}
-          onLevelChange={setLevel}
           onApprove={handleAiGenerateExam}
           onClose={resetForm}
           loading={aiLoading}
@@ -1320,8 +1409,11 @@ export default function ExamBankPage() {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm">
-                    {activeTab === 'exercise' ? 'assignment' : 'assignment_outlined'}
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    assignment
                   </span>
                   Bài tập
                 </div>
@@ -1336,8 +1428,11 @@ export default function ExamBankPage() {
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-sm">
-                    {activeTab === 'exam' ? 'quiz' : 'quiz_outlined'}
+                  <span
+                    className="material-symbols-outlined text-sm"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    quiz
                   </span>
                   Bài thi
                 </div>
@@ -1616,123 +1711,60 @@ export default function ExamBankPage() {
       {activeTab === 'exam' && (
         <div className="mt-8 lg:mt-0">
           <div className="bg-white/80 backdrop-blur-md shadow-sm rounded-2xl p-8 border border-outline-variant/15 sticky top-28">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-headline font-bold text-secondary">Cấu trúc Đề thi</h3>
-              {!editingStructure ? (
-                <button
-                  onClick={() => { setStructDraft(examStructure); setEditingStructure(true); }}
-                  className="text-xs font-bold text-secondary hover:underline flex items-center gap-1"
-                >
-                  <span className="material-symbols-outlined text-sm">edit</span> Chỉnh sửa
-                </button>
-              ) : (
-                <span className="text-[10px] font-bold bg-tertiary/10 text-tertiary px-2 py-1 rounded">
-                  ĐANG SỬA
-                </span>
-              )}
-            </div>
+            <h3 className="text-xl font-headline font-bold text-secondary mb-6">Cấu trúc Đề thi</h3>
 
-            {!editingStructure ? (
-              <div className="space-y-6">
-                <div className="relative pl-5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-secondary/40 rounded-full">
-                  <div className="flex justify-between items-center mb-1">
-                    <h4 className="font-headline font-bold text-secondary text-sm">
-                      Phần I — {examStructure.part1Name}
-                    </h4>
-                    <span className="text-xs font-bold text-secondary">{examStructure.part1Points} điểm</span>
+            <div className="space-y-5">
+              {/* Part I */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-headline font-bold text-secondary text-sm">
+                    Phần I — Đọc hiểu
+                  </h4>
+                  <span className="text-xs font-bold bg-secondary/10 text-secondary px-2 py-0.5 rounded-full">3.0đ</span>
+                </div>
+                <div className="space-y-1.5 pl-3 border-l-2 border-secondary/30">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>I.1 — Nhận biết</span>
+                    <span className="font-medium">0.5đ</span>
                   </div>
-                  <p className="text-xs text-slate-400">Đọc hiểu văn bản, nhận biết, thông hiểu, vận dụng.</p>
-                </div>
-                <div className="relative pl-5 before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[3px] before:bg-primary/40 rounded-full">
-                  <div className="flex justify-between items-center mb-1">
-                    <h4 className="font-headline font-bold text-primary text-sm">
-                      Phần II — {examStructure.part2Name}
-                    </h4>
-                    <span className="text-xs font-bold text-primary">{examStructure.part2Points} điểm</span>
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>I.2 — Thông hiểu</span>
+                    <span className="font-medium">1.0đ</span>
                   </div>
-                  <p className="text-xs text-slate-400">Nghị luận xã hội + Nghị luận văn học.</p>
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>I.3 — Vận dụng</span>
+                    <span className="font-medium">1.5đ</span>
+                  </div>
                 </div>
-                <div className="pt-2 border-t border-outline-variant/20">
-                  <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-sm text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      auto_awesome
-                    </span>
-                    Truyền vào prompt AI khi tạo đề thi.
-                  </p>
-                </div>
+                <p className="text-[10px] text-slate-400 italic pl-3">Tự tạo văn bản đọc hiểu. Không dùng tác phẩm thư viện.</p>
               </div>
-            ) : (
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 1 — Tên</label>
-                  <input
-                    value={structDraft.part1Name}
-                    onChange={e => setStructDraft({ ...structDraft, part1Name: e.target.value })}
-                    className="w-full border border-secondary/40 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-secondary/20 focus:border-secondary"
-                    placeholder="VD: Đọc hiểu"
-                  />
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 1 — Điểm</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="0.5"
-                    value={structDraft.part1Points}
-                    onChange={e => setStructDraft({ ...structDraft, part1Points: parseFloat(e.target.value) || 0 })}
-                    className="w-full border border-secondary/40 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-secondary/20 focus:border-secondary"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 2 — Tên</label>
-                  <input
-                    value={structDraft.part2Name}
-                    onChange={e => setStructDraft({ ...structDraft, part2Name: e.target.value })}
-                    className="w-full border border-primary/40 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    placeholder="VD: Làm văn"
-                  />
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Phần 2 — Điểm</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="0.5"
-                    value={structDraft.part2Points}
-                    onChange={e => setStructDraft({ ...structDraft, part2Points: parseFloat(e.target.value) || 0 })}
-                    className="w-full border border-primary/40 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditingStructure(false)}
-                    className="flex-1 border border-outline-variant py-2 rounded-xl text-sm font-semibold hover:bg-surface-container-low transition-colors"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveStructure}
-                    className="flex-1 bg-secondary text-white py-2 rounded-xl text-sm font-semibold hover:bg-secondary/90 transition-colors"
-                  >
-                    Lưu
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Prompt preview */}
-          <div className="mt-4 bg-surface-container-low/60 rounded-xl p-4 border border-outline-variant/10">
-            <p className="text-[10px] font-bold text-outline uppercase mb-2">AI Prompt Preview</p>
-            <div className="text-[10px] text-slate-500 font-mono leading-relaxed space-y-1">
-              <p>
-                <span className="text-secondary font-bold">Phần I:</span>{' '}
-                {examStructure.part1Name} ({examStructure.part1Points}đ) — 3 câu: TN (0.5đ) + TL ngắn (1đ) + TL dài (1.5đ)
-              </p>
-              <p>
-                <span className="text-primary font-bold">Phần II:</span>{' '}
-                {examStructure.part2Name} ({examStructure.part2Points}đ) — NL XH (2đ) + NLVH (5đ)
-              </p>
+              {/* Part II */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-headline font-bold text-primary text-sm">
+                    Phần II — Làm văn
+                  </h4>
+                  <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">7.0đ</span>
+                </div>
+                <div className="space-y-1.5 pl-3 border-l-2 border-primary/30">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>II.1 — Nghị luận xã hội</span>
+                    <span className="font-medium">2.0đ</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>II.2 — Nghị luận văn học</span>
+                    <span className="font-medium">5.0đ</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 italic pl-3">II.2 dùng tác phẩm đã chọn. Không chọn → AI tự chọn tác phẩm.</p>
+              </div>
+
+              {/* Total */}
+              <div className="pt-3 border-t border-outline-variant/20 flex justify-between items-center">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng</span>
+                <span className="text-base font-bold text-primary">10 điểm</span>
+              </div>
             </div>
           </div>
         </div>

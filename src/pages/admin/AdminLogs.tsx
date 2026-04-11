@@ -230,6 +230,52 @@ interface LogEntry {
   createdAt: string;
 }
 
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
+function formatDetails(action: string, raw: string | null): string {
+  if (!raw) return '—';
+  try {
+    const d = JSON.parse(raw);
+    switch (action) {
+      case 'login':      return `IP: ${d.ip || '—'}`;
+      case 'logout':     return d.ip ? `IP: ${d.ip}` : '—';
+      case 'create_class': return `Tên: ${d.name}${d.gradeLevel ? ` · Khối ${d.gradeLevel}` : ''}`;
+      case 'update_class': return `Tên: ${d.name}${d.gradeLevel != null ? ` · Khối ${d.gradeLevel}` : ''}`;
+      case 'delete_class': return `Lớp: ${d.name || '—'}`;
+      case 'create_user': return `Tên: ${d.username || d.name || '—'} · ${d.role || '—'}`;
+      case 'update_user': return `Tên: ${d.username || d.name || '—'}`;
+      case 'delete_user': return d.username || '—';
+      case 'reset_password': return d.username || '—';
+      case 'student_registered': return `Lớp: ${d.className || '—'}`;
+      case 'student_joined':   return `HS: ${d.studentName || d.studentId || '—'}`;
+      case 'work_created':   return `Tác phẩm: ${d.title || d.workTitle || '—'}`;
+      case 'character_created': return `Nhân vật: ${d.name || '—'}`;
+      case 'exam_published': return `Đề: ${d.title || d.examTitle || '—'}`;
+      case 'submission_submitted': return `Đề: ${d.title || '—'}`;
+      case 'grading_returned': return `Đề: ${d.title || '—'} · ${d.score != null ? `Điểm: ${d.score}` : '—'}`;
+      case 'ai_exam_approved': return `Đề: ${d.title || '—'}`;
+      default: {
+        const entries = Object.entries(d);
+        if (entries.length === 0) return '—';
+        return entries.map(([k, v]) => `${k}: ${v}`).join(' · ');
+      }
+    }
+  } catch {
+    return raw || '—';
+  }
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+interface LogEntry {
+  id: string;
+  userName: string;
+  userRole: string;
+  action: string;
+  details: string | null;
+  createdAt: string;
+}
+
 function LogItem({ log }: { log: LogEntry }) {
   const meta = ACTION_META[log.action] || { label: log.action, color: '#6b7280', bg: 'bg-gray-100' };
   const roleMeta = ROLE_META[log.userRole] || { bg: 'bg-[#326286]/20', color: '#326286', label: log.userRole };
@@ -267,7 +313,7 @@ function LogItem({ log }: { log: LogEntry }) {
           </span>
         </div>
         {log.details && (
-          <p className="text-xs text-outline mt-1.5 pl-0">{log.details}</p>
+          <p className="text-xs text-outline mt-1.5 pl-0">{formatDetails(log.action, log.details)}</p>
         )}
       </div>
     </div>

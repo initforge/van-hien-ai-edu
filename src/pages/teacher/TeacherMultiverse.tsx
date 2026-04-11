@@ -1,260 +1,350 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
-import { useNavigate } from 'react-router-dom';
-import AiPreviewModal from '../../components/ai/AiPreviewModal';
-import MultiversePreviewContent from '../../components/ai/MultiversePreviewContent';
-import { fetcher, authFetch } from '../../lib/fetcher';
+import { fetcher } from '../../lib/fetcher';
+
+interface MultiverseStory {
+  id: string;
+  studentId: string;
+  studentName: string;
+  workId: string;
+  workTitle: string;
+  branchPoint: string;
+  content: string | null;
+  moral: string | null;
+  generationMethod: string;
+  depth: number;
+  createdAt: string;
+}
+
+interface TeacherClass {
+  id: string;
+  name: string;
+}
+
+function formatTimeAgo(dateStr: string) {
+  try {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 60) return `${min}p trước`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}g trước`;
+    return `${Math.floor(h / 24)}d trước`;
+  } catch { return ''; }
+}
 
 export default function TeacherMultiversePage() {
-  const { data: storylinesData, mutate, isLoading } = useSWR('/api/teacher/storylines', fetcher);
-  const { data: charactersData } = useSWR('/api/characters', fetcher);
-  const storylines = storylinesData?.data ?? [];
-  const characters = charactersData?.data ?? [];
+  const [filterClass, setFilterClass] = useState('');
+  const [filterStudent, setFilterStudent] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [previewStory, setPreviewStory] = useState<MultiverseStory | null>(null);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
 
-  const works = React.useMemo(() => {
-    const map = new Map<string, { id: string; title: string }>();
-    for (const c of characters) {
-      if (c.workId && !map.has(c.workId)) {
-        map.set(c.workId, { id: c.workId, title: c.workTitle || c.workId });
+  const apiUrl = `/api/multiverse${filterClass ? `?classId=${filterClass}${filterStudent ? `&studentId=${filterStudent}` : ''}&limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}` : ''}`;
+  const { data: mvData, isLoading } = useSWR<{ data: MultiverseStory[] }>(apiUrl, fetcher);
+  const { data: classesData } = useSWR<{ data: TeacherClass[] }>('/api/teacher/classes', fetcher);
+
+  const storylines: MultiverseStory[] = (mvData && typeof mvData === 'object' && !('error' in mvData) && Array.isArray(mvData.data)) ? mvData.data : [];
+  const classes: TeacherClass[] = (classesData && typeof classesData === 'object' && !('error' in classesData) && Array.isArray(classesData.data)) ? classesData.data : [];
+
+  // Unique students for secondary filter
+  const students = React.useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const s of storylines) {
+      if (!map.has(s.studentId)) {
+        map.set(s.studentId, { id: s.studentId, name: s.studentName || 'Học sinh' });
       }
     }
-    return Array.from(map.values());
-  }, [characters]);
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [storylines]);
 
-  const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState({ workId: works[0]?.id || '', branchPoint: '' });
-
-  // ── AI Preview state ──────────────────────────────────────────────────────
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<{
-    previewId: string;
-    title: string;
-    content: string;
-    moral: string;
-  } | null>(null);
-  const [editableContent, setEditableContent] = useState({ title: '', content: '', moral: '' });
-  const [aiLoading, setAiLoading] = useState(false);
-  const [modalLoading, setModalLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.branchPoint.trim()) return;
-
-    setAiLoading(true);
-    try {
-      const res = await authFetch('/api/ai/multiverse-preview', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workId: formData.workId,
-          branchPoint: formData.branchPoint,
-        }),
-      });
-      const data = await res.json();
-      if (data.previewId) {
-        setPreviewData(data);
-        setEditableContent({
-          title: data.title || '',
-          content: data.content || '',
-          moral: data.moral || '',
-        });
-        setShowPreview(true);
-        setIsCreating(false);
-      } else {
-        alert(data.error || 'AI không tạo được. Thử lại.');
-      }
-    } catch {
-      alert('Lỗi khi gọi AI. Kiểm tra kết nối.');
-    } finally {
-      setAiLoading(false);
+  // Group: className → studentName → stories[]
+  const byClass = React.useMemo(() => {
+    const map = new Map<string, Map<string, MultiverseStory[]>>();
+    for (const s of storylines) {
+      const cls = s.workTitle || 'Khác';
+      if (!map.has(cls)) map.set(cls, new Map());
+      const byStu = map.get(cls)!;
+      const stuKey = s.studentName || s.studentId;
+      if (!byStu.has(stuKey)) byStu.set(stuKey, []);
+      byStu.get(stuKey)!.push(s);
     }
-  };
+    return map;
+  }, [storylines]);
 
-  const handleApprove = async () => {
-    if (!previewData) return;
-    setModalLoading(true);
-    const approved = { ...previewData, ...editableContent };
-
-    // Optimistic: add to list instantly
-    await mutate(
-      '/api/teacher/storylines',
-      (current: { data: typeof storylines } | undefined) => ({
-        ...current,
-        data: [
-          ...(current?.data ?? []),
-          {
-            id: approved.previewId,
-            workId: formData.workId,
-            workTitle: works.find(w => w.id === formData.workId)?.title || '',
-            branchPoint: formData.branchPoint,
-            createdAt: new Date().toISOString(),
-          },
-        ],
-      }),
-      false
-    );
-    setShowPreview(false);
-    setPreviewData(null);
-    setFormData({ workId: works[0]?.id || '', branchPoint: '' });
-
-    try {
-      await authFetch('/api/ai/multiverse-approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          previewId: approved.previewId,
-          ...editableContent,
-        }),
-      });
-    } catch {
-      // Rollback
-      await mutate('/api/teacher/storylines');
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!previewData) return;
-    await authFetch('/api/ai/multiverse-reject', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ previewId: previewData.previewId }),
-    });
-    setShowPreview(false);
-    setPreviewData(null);
-  };
+  const total = storylines.length;
+  const hasStories = total > 0;
 
   return (
-    <div className="relative min-h-[80vh] pb-20">
-      <div className="flex justify-between items-end mb-10">
+    <div className="pb-20">
+      {/* Header */}
+      <div className="flex justify-between items-end mb-8">
         <div>
-          <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">Quản lý Đa vũ trụ cốt truyện</h2>
-          <p className="text-outline mt-2 font-body italic max-w-2xl">Thiết lập các điểm rẽ nhánh (What-if scenarios) để học sinh khám phá góc nhìn mới của văn học kinh điển thông qua AI hóa thân.</p>
+          <span className="text-xs font-bold text-secondary uppercase tracking-widest block mb-2">
+            Không gian sáng tạo
+          </span>
+          <h2 className="text-4xl font-headline font-bold text-primary tracking-tight">
+            Đa Vũ trụ cốt truyện
+          </h2>
+          <p className="text-sm text-slate-500 mt-2 max-w-xl">
+            Xem và review các storyline sáng tạo của học sinh.
+          </p>
         </div>
-        <button
-          onClick={() => setIsCreating(true)}
-          className="bg-primary text-white px-6 py-3 rounded-full font-headline font-bold hover:shadow-lg hover:-translate-y-0.5 active:scale-95 transition-all flex items-center gap-2"
-        >
-          <span className="material-symbols-outlined text-sm">add</span> Tạo nhánh mới
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Storylines */}
-        <div className={`transition-all duration-500 ease-in-out ${isCreating ? 'lg:col-span-7' : 'lg:col-span-12'}`}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {isLoading ? (
-              <div className="p-8 text-center text-outline w-full col-span-2">Đang tải không gian đa vũ trụ...</div>
-            ) : storylines?.length === 0 ? (
-              <div className="p-12 text-center text-outline bg-surface-container-lowest border border-dashed border-outline-variant/50 rounded-3xl w-full col-span-2">
-                <span className="material-symbols-outlined text-4xl mb-3 opacity-50">auto_awesome_mosaic</span>
-                <p className="font-headline">Chưa có nhánh cốt truyện nào được khởi tạo.</p>
-              </div>
-            ) : (
-              storylines?.map((story: { id: string; workId: string; workTitle?: string; branchPoint: string; createdAt: string }, i: number) => (
-                <div key={story.id} className="group p-6 bg-white/80 backdrop-blur-md rounded-2xl border border-outline-variant/30 hover:shadow-xl hover:border-secondary/30 transition-all duration-300 relative overflow-hidden flex flex-col justify-between" style={{ animation: `fadeIn 0.5s ease-out ${i * 0.1}s both` }}>
-                  <div className="absolute -right-10 -top-10 w-32 h-32 bg-secondary/5 rounded-full blur-2xl group-hover:bg-secondary/10 transition-colors pointer-events-none"></div>
-                  <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
-                      <span className="bg-primary/5 text-primary text-[10px] font-bold px-3 py-1 rounded-full border border-primary/10 uppercase tracking-widest">
-                        {story.workTitle || 'Tác phẩm'}
-                      </span>
-                      <span className="text-[10px] text-outline font-medium">Hôm nay</span>
-                    </div>
-                    <h3 className="font-headline font-bold text-xl text-on-surface mb-2 leading-tight group-hover:text-primary transition-colors">
-                      Điểm rẽ nhánh: {story.branchPoint?.substring(0, 60)}{story.branchPoint?.length > 60 ? '...' : ''}
-                    </h3>
-                    <p className="text-sm text-outline mb-6">Mô phỏng 12 nhân vật tương tác tự do dựa trên prompt gốc.</p>
-                  </div>
-                  <div className="border-t border-outline-variant/20 pt-4 flex gap-3 relative z-10">
-                    <button className="text-xs font-bold text-tertiary flex items-center gap-1 hover:underline">
-                      <span className="material-symbols-outlined text-[14px]">edit_document</span> Sửa Prompt
-                    </button>
-                    <button className="text-xs font-bold text-secondary flex items-center gap-1 hover:underline ml-auto">
-                      Quản lý Node <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Creation Panel */}
-        {isCreating && (
-          <div className="lg:col-span-5 relative" style={{ animation: "slideLeft 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}>
-            <div className="sticky top-24 bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-8 shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-headline font-bold text-2xl text-primary">Tạo nhánh mới</h3>
-                <button onClick={() => setIsCreating(false)} className="text-outline hover:text-primary transition-colors">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1 block mb-2">Tác phẩm gốc</label>
-                  <select
-                    value={formData.workId}
-                    onChange={(e) => setFormData({...formData, workId: e.target.value})}
-                    className="w-full bg-surface-container-low/50 border border-outline-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20 px-4 py-3 text-sm transition-all outline-none rounded-xl"
-                  >
-                    {works.map(w => (
-                      <option key={w.id} value={w.id}>{w.title}</option>
-                    ))}
-                    {!works.length && (
-                      <option value="work-1">Truyện Kiều — Nguyễn Du</option>
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-label font-bold uppercase text-on-surface-variant/70 ml-1 block mb-2">AI Prompt Khởi tạo giả định (What-if)</label>
-                  <textarea
-                    required
-                    rows={5}
-                    placeholder="Ví dụ: Hãy đóng vai cậu Vàng lúc hấp hối, Lão Hạc đang ôm cậu khóc. Cậu Vàng bỗng dưng biết nói tiếng người..."
-                    value={formData.branchPoint}
-                    onChange={(e) => setFormData({...formData, branchPoint: e.target.value})}
-                    className="w-full bg-surface-container-low/50 border border-outline-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20 px-4 py-3 text-sm transition-all outline-none rounded-xl resize-none leading-relaxed"
-                  />
-                  <p className="text-[10px] text-outline mt-2 italic">Hệ thống sẽ truyền System Prompt này vào không gian trò chuyện của Học sinh.</p>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={aiLoading || !formData.branchPoint.trim()}
-                  className="w-full py-4 rounded-xl bg-gradient-to-r from-primary to-primary-container text-white font-bold tracking-wide shadow-md hover:shadow-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-sm">{aiLoading ? 'hourglass_empty' : 'auto_awesome'}</span>
-                  {aiLoading ? 'Đang tạo xem trước...' : 'Tạo xem trước bằng AI'}
-                </button>
-              </form>
-            </div>
+        {hasStories && (
+          <div className="bg-secondary/10 text-secondary px-4 py-2 rounded-xl text-sm font-bold">
+            {total} storyline{total !== 1 ? '' : ''}
           </div>
         )}
       </div>
 
-      {/* Multiverse Preview Modal */}
-      {previewData && (
-        <AiPreviewModal
-          open={showPreview}
-          onClose={() => setShowPreview(false)}
-          title={`Xem trước: ${previewData.title}`}
-          onApprove={handleApprove}
-          onReject={handleReject}
-          loading={modalLoading}
-          loadingLabel="Đang lưu..."
-          footerNote="Bạn có thể chỉnh sửa tiêu đề, nội dung hoặc ý nghĩa trước khi duyệt."
+      {/* Filters */}
+      <div className="flex gap-4 mb-8">
+        <div className="relative">
+          <select
+            value={filterClass}
+            onChange={e => { setFilterClass(e.target.value); setFilterStudent(''); }}
+            className="appearance-none bg-white border border-outline-variant/40 rounded-xl pl-4 pr-10 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 cursor-pointer"
+          >
+            <option value="">Tất cả lớp</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+        </div>
+
+        {filterClass && (
+          <div className="relative">
+            <select
+              value={filterStudent}
+              onChange={e => setFilterStudent(e.target.value)}
+              className="appearance-none bg-white border border-outline-variant/40 rounded-xl pl-4 pr-10 py-2.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 cursor-pointer"
+            >
+              <option value="">Tất cả học sinh</option>
+              {students.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+          </div>
+        )}
+      </div>
+
+      {/* Empty: no class selected */}
+      {!filterClass && (
+        <div className="text-center py-20 text-slate-400">
+          <span className="material-symbols-outlined text-6xl mb-4 block opacity-20">hub</span>
+          <p className="font-headline font-bold text-lg">Chọn lớp để xem storyline</p>
+          <p className="text-sm mt-2">Sử dụng bộ lọc lớp bên trên để xem storyline của học sinh.</p>
+        </div>
+      )}
+
+      {/* Empty: class selected but no stories */}
+      {filterClass && !isLoading && !hasStories && (
+        <div className="text-center py-20 text-slate-400">
+          <span className="material-symbols-outlined text-6xl mb-4 block opacity-20">auto_awesome_mosaic</span>
+          <p className="font-headline font-bold text-lg">Chưa có storyline nào</p>
+          <p className="text-sm mt-2">Học sinh trong lớp này chưa tạo storyline đa vũ trụ.</p>
+        </div>
+      )}
+
+      {/* Loading */}
+      {isLoading && filterClass && (
+        <div className="text-center py-12 text-slate-400">
+          <span className="material-symbols-outlined text-4xl animate-spin mb-4 block opacity-50">progress_activity</span>
+          <p className="text-sm">Đang tải storyline...</p>
+        </div>
+      )}
+
+      {/* Stories — grouped by class > student */}
+      {hasStories && (
+        <div className="space-y-10">
+          {Array.from(byClass.entries()).map(([workTitle, byStudent]) => (
+            <div key={workTitle}>
+              {/* Work header */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>menu_book</span>
+                </div>
+                <div>
+                  <h3 className="font-headline font-bold text-primary">{workTitle}</h3>
+                  <span className="text-xs text-slate-400">
+                    {Array.from(byStudent.values()).reduce((a, v) => a + v.length, 0)} storyline
+                  </span>
+                </div>
+              </div>
+
+              {/* Students in this work */}
+              <div className="space-y-8 pl-4 border-l-2 border-primary/10">
+                {Array.from(byStudent.entries()).map(([studentName, stories]) => (
+                  <div key={studentName}>
+                    {/* Student row */}
+                    <div className="flex items-center gap-2 mb-4 pl-4">
+                      <div className="w-7 h-7 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary text-xs font-bold">
+                        {(studentName || 'HS').slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="text-sm font-bold text-tertiary">{studentName}</span>
+                      <span className="text-xs text-slate-400">· {stories.length} storyline</span>
+                    </div>
+
+                    {/* Storyline cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
+                      {stories.map(s => (
+                        <div
+                          key={s.id}
+                          className={`bg-white rounded-2xl border p-5 cursor-pointer transition-all hover:shadow-md ${
+                            expanded === s.id
+                              ? 'border-primary shadow-md ring-2 ring-primary/10'
+                              : 'border-outline-variant/20 hover:border-primary/30'
+                          }`}
+                          onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                        >
+                          {/* Card header */}
+                          <div className="flex justify-between items-start mb-3">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                              s.generationMethod === 'ai_full'
+                                ? 'bg-secondary/10 text-secondary'
+                                : 'bg-surface-container-low text-slate-500'
+                            }`}>
+                              {s.generationMethod === 'ai_full' ? 'AI' : 'Tự viết'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">{formatTimeAgo(s.createdAt)}</span>
+                          </div>
+
+                          <p className="font-headline font-bold text-sm text-primary leading-snug mb-2 line-clamp-2">
+                            {s.branchPoint}
+                          </p>
+
+                          {/* Expanded content */}
+                          {expanded === s.id && (
+                            <div className="mt-3 pt-3 border-t border-outline-variant/20 space-y-3 animate-[fadeIn_0.15s_ease-out]">
+                              {s.content ? (
+                                <div className="bg-surface-container-low rounded-xl p-4">
+                                  <p className="text-xs text-slate-500 font-bold mb-1">Nội dung</p>
+                                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{s.content}</p>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-400 italic text-center py-4">Chưa có nội dung.</p>
+                              )}
+
+                              {s.moral && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Bài học</p>
+                                  <p className="text-sm text-amber-700 italic">{s.moral}</p>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setPreviewStory(s); }}
+                                className="w-full py-2 text-xs font-bold text-primary hover:bg-primary/5 rounded-lg transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm align-middle mr-1">open_in_new</span>
+                                Xem chi tiết
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Collapse indicator */}
+                          {expanded !== s.id && (
+                            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs">expand_more</span>
+                              Xem thêm
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Detail Modal */}
+      {previewStory && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setPreviewStory(null)}
         >
-          <MultiversePreviewContent
-            title={editableContent.title}
-            content={editableContent.content}
-            moral={editableContent.moral}
-            onChange={(field, value) => setEditableContent(prev => ({ ...prev, [field]: value }))}
-          />
-        </AiPreviewModal>
+          <div
+            className="relative z-10 bg-white rounded-2xl p-8 shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-7 h-7 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary text-xs font-bold">
+                    {(previewStory.studentName || 'HS').slice(0, 2).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-bold text-tertiary">{previewStory.studentName}</span>
+                  <span className="text-xs text-slate-400">· {previewStory.workTitle}</span>
+                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                  previewStory.generationMethod === 'ai_full'
+                    ? 'bg-secondary/10 text-secondary'
+                    : 'bg-surface-container-low text-slate-500'
+                }`}>
+                  {previewStory.generationMethod === 'ai_full' ? 'AI tạo' : 'Tự viết'}
+                </span>
+              </div>
+              <button onClick={() => setPreviewStory(null)} className="text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <h3 className="font-headline font-bold text-xl text-primary mb-4 leading-snug">
+              {previewStory.branchPoint}
+            </h3>
+
+            {previewStory.content ? (
+              <div className="bg-surface-container-low rounded-xl p-6 mb-4">
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{previewStory.content}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400 italic text-center py-8">Chưa có nội dung.</p>
+            )}
+
+            {previewStory.moral && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">lightbulb</span>
+                  Bài học rút ra
+                </p>
+                <p className="text-sm text-amber-700 italic">{previewStory.moral}</p>
+              </div>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between items-center text-xs text-slate-400">
+              <span>{formatTimeAgo(previewStory.createdAt)}</span>
+              <span>{previewStory.depth === 0 ? 'Nhánh gốc' : `Độ sâu ${previewStory.depth}`}</span>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Pagination */}
+      {hasStories && (
+        <div className="flex items-center justify-center gap-3 mt-8 pt-6 border-t border-outline-variant/20">
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="w-9 h-9 rounded-xl border border-outline-variant/30 flex items-center justify-center disabled:opacity-40 hover:bg-surface-container-low transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">chevron_left</span>
+          </button>
+          <span className="text-sm font-medium text-slate-500">
+            Trang {page + 1}
+          </span>
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={storylines.length < PAGE_SIZE}
+            className="w-9 h-9 rounded-xl border border-outline-variant/30 flex items-center justify-center disabled:opacity-40 hover:bg-surface-container-low transition-colors"
+          >
+            <span className="material-symbols-outlined text-sm">chevron_right</span>
+          </button>
+        </div>
       )}
     </div>
   );

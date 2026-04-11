@@ -10,7 +10,10 @@
 export function jsonError(message, status) {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
   });
 }
 

@@ -130,7 +130,7 @@ export default function ExamRoomPage() {
               <div className="flex justify-between items-center pt-4 border-t border-outline-variant/10">
                 <div className="flex items-center gap-2 text-xs text-outline">
                   <span className="material-symbols-outlined text-sm">quiz</span>
-                  {'—'} câu hỏi
+                  {exam.questionCount ?? 0} câu hỏi
                 </div>
                 <div className="flex items-center gap-2 text-xs text-outline">
                   <span className="material-symbols-outlined text-sm">event</span>
@@ -164,12 +164,12 @@ export default function ExamRoomPage() {
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">quiz</span>
               <p className="text-xs text-outline uppercase font-bold tracking-wider">Câu hỏi</p>
-              <p className="font-bold text-primary">—</p>
+              <p className="font-bold text-primary">{selected.questionCount ?? 0}</p>
             </div>
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">signal_cellular_alt</span>
               <p className="text-xs text-outline uppercase font-bold tracking-wider">Độ khó</p>
-              <p className="font-bold text-primary">{'—'}</p>
+              <p className="font-bold text-primary">—</p>
             </div>
             <div className="bg-surface-container-low p-4 rounded-xl text-center">
               <span className="material-symbols-outlined text-primary text-2xl mb-2">menu_book</span>

@@ -55,7 +55,7 @@ export default function CharacterChatPage() {
   const handleSelectChar = async (id: string) => {
     setSelectedChar(id);
     try {
-      const res = await authFetch("api/chat", {
+      const res = await authFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: [], characterId: id }),
@@ -91,15 +91,17 @@ export default function CharacterChatPage() {
     setInput("");
 
     try {
-      const res = await authFetch("api/chat", {
+      const res = await authFetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: currentSnapshot.slice(0, -1), characterId: selectedChar, threadId }),
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
-        throw new Error(errData.error || `HTTP ${res.status}`);
+        // Try JSON first, then plain text
+        const errData = await res.json().catch(() => null);
+        const errMsg = errData?.error || await res.text().catch(() => '').then(t => t || `HTTP ${res.status}`);
+        throw new Error(errMsg);
       }
       if (!res.body) throw new Error("No response body");
 

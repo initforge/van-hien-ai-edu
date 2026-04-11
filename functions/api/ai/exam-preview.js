@@ -1,8 +1,14 @@
 /**
  * POST /api/ai/exam-preview — Generate exam questions (preview only, no DB save)
- * Teacher clicks "AI gợi ý đề" → preview → approve/reject
  *
- * Body: { title, type, workId, classId, duration }
+ * KEY RULES:
+ * - Exam Part I: NEVER uses passageContext. Uses part1Prompt if given, else AI generates freely.
+ * - Exam Part II.1 (NLXH): Uses part2Prompt if given, else AI generates freely.
+ * - Exam Part II.2 (NLVH): ONLY this part uses passageContext (from work selection).
+ * - Exercise: passageContext is fine since the whole exercise is based on one work.
+ *
+ * Body: { title, type, workId, classId, duration, structure,
+ *         customPrompt, part1Prompt, part2Prompt }
  * Response: { previewId, title, questions[] }
  */
 import { aiCall } from '../_ai.js';
@@ -11,6 +17,35 @@ import { jsonError, parseAiJson, getWorkAnalysis } from '../_utils.js';
 import { logTokenUsage } from '../_tokenLog.js';
 
 const KV_KEY_PREFIX = 'exam-preview:';
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+async function buildPassageContext(env, user, workId) {
+  if (!workId) return '';
+  const work = await env.DB.prepare(
+    `SELECT title, author FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
+  ).bind(workId, user.id).first();
+  if (!work) return '';
+  const analysis = await getWorkAnalysis(env.DB, workId);
+  const lines = [
+    `Tác phẩm "${work.title}" của ${work.author}.`,
+    analysis.summary       ? `Tóm tắt: ${analysis.summary}`       : '',
+    analysis.characters    ? `Phân tích nhân vật: ${analysis.characters}` : '',
+    analysis.themes         ? `Chủ đề: ${analysis.themes}`          : '',
+    analysis.art_features  ? `Đặc sắc nghệ thuật: ${analysis.art_features}` : '',
+    analysis.content_value ? `Giá trị nội dung: ${analysis.content_value}` : '',
+    analysis.context       ? `Bối cảnh: ${analysis.context}`       : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+const SYSTEM_PROMPT =
+  `Bạn là giáo viên ngữ văn Việt Nam (THCS). Nhiệm vụ: tạo CÂU HỎI bài tập hoặc đề thi.` +
+  `\n\nLuôn trả JSON theo format sau, KHÔNG thêm text khác ngoài JSON:` +
+  `\n{ "questions": [ { "content": "nội dung câu hỏi", "type": "essay|short_answer", "points": 1-10, "rubric": "gợi ý" } ] }` +
+  `\nQuy tắc: essay tối đa 10đ, short_answer tối đa 5đ. Tổng điểm mặc định 10.`;
+
+// ── Main handler ───────────────────────────────────────────────────────────────
 
 export async function onRequestPost({ request, env, data }) {
   try {
@@ -27,78 +62,73 @@ export async function onRequestPost({ request, env, data }) {
       workId,
       classId,
       deadline,
-      structure, // { part1Name, part1Points, part2Name, part2Points }
+      structure,
+      customPrompt,
+      part1Prompt,
+      part2Prompt,
     } = body;
 
     if (!title?.trim()) {
-      return jsonError('Thiếu tiêu đề đề thi.', 400);
+      return jsonError('Thiếu tiêu đề.', 400);
     }
 
-    // Build passage context from work_analysis + work metadata
-    let passageContext = '';
-    if (workId) {
-      const work = await env.DB.prepare(
-        `SELECT title, author FROM works WHERE id = ? AND teacher_id = ? LIMIT 1`
-      ).bind(workId, user.id).first();
-      if (work) {
-        const analysis = await getWorkAnalysis(env.DB, workId);
-        const summary   = analysis.summary       || '';
-        const themes    = analysis.themes         || '';
-        const chars     = analysis.characters     || '';
-        const artFeat   = analysis.art_features  || '';
-        const ctxVal    = analysis.content_value  || '';
-        const context   = analysis.context       || '';
-
-        passageContext =
-          `\n\nTác phẩm: "${work.title}" của ${work.author}.` +
-          (summary  ? `\nTóm tắt tác phẩm:\n${summary}` : '') +
-          (chars    ? `\nPhân tích nhân vật:\n${chars}` : '') +
-          (themes   ? `\nChủ đề và thông điệp:\n${themes}` : '') +
-          (artFeat  ? `\nĐặc sắc nghệ thuật:\n${artFeat}` : '') +
-          (ctxVal   ? `\nGiá trị nội dung:\n${ctxVal}` : '') +
-          (context  ? `\nBối cảnh:\n${context}` : '');
-      }
-    }
-
-    const systemPrompt =
-      `Bạn là giáo viên ngữ văn Việt Nam. Nhiệm vụ: tạo CÂU HỎI bài tập/đề thi.` +
-      passageContext +
-      `\n\nLuôn trả JSON theo format sau, KHÔNG thêm text khác:` +
-      `\n\n{\n  "questions": [\n    {\n      "content": "nội dung câu hỏi",\n      "type": "essay|short_answer|multiple_choice",\n      "points": 1-10,\n      "rubric": "gợi ý đáp án / rubric ngắn"\n    }\n  ]\n}` +
-      `\n\nQuy tắc: Điểm essay tối đa 10, short_answer tối đa 5, multiple_choice tối đa 2.`;
+    // passageContext chỉ dùng cho Part II.2 (đề thi) và exercise (bài tập)
+    const passageContext = await buildPassageContext(env, user, workId);
 
     let userPrompt;
+
     if (type === 'exam' && structure) {
-      // Exam: use the teacher's custom structure
+      // ── EXAM: cố định 3+7, gán ĐÚNG điểm từng câu ───────────────────────
+      // Câu 1 = I.1 Nhận biết (0.5đ), Câu 2 = I.2 Thông hiểu (1đ), Câu 3 = I.3 Vận dụng (1.5đ)
+      // Câu 4 = II.1 Nghị luận xã hội (2đ), Câu 5 = II.2 Nghị luận văn học (5đ)
+      const part1 = part1Prompt
+        ? `Câu 1 (0.5đ) — Nhận biết: ${part1Prompt}\nCâu 2 (1.0đ) — Thông hiểu: ${part1Prompt}\nCâu 3 (1.5đ) — Vận dụng: ${part1Prompt}`
+        : `Câu 1 (0.5đ) — Nhận biết. Tự tạo văn bản đọc hiểu nếu cần.\nCâu 2 (1.0đ) — Thông hiểu. Tự tạo văn bản đọc hiểu nếu cần.\nCâu 3 (1.5đ) — Vận dụng. Tự tạo văn bản đọc hiểu nếu cần.\nLưu ý: KHÔNG dùng tác phẩm từ thư viện cho 3 câu này.`;
+
+      const part2Social = part2Prompt
+        ? `Câu 4 (2.0đ) — Nghị luận xã hội: ${part2Prompt}`
+        : `Câu 4 (2.0đ) — Nghị luận xã hội. Viết đoạn văn ngắn 150-200 chữ. Tự chọn chủ đề phù hợp.`;
+
+      const part2Lit = passageContext
+        ? `Câu 5 (5.0đ) — Nghị luận văn học. Dựa trên tác phẩm đã chọn.\n${passageContext}`
+        : `Câu 5 (5.0đ) — Nghị luận văn học. Tự chọn tác phẩm Việt Nam phù hợp chương trình THCS.`;
+
       userPrompt =
-        `Tạo 5 câu hỏi cho đề thi "${title}".\n` +
-        `Tỷ lệ điểm:\n` +
-        `  - Phần I: "${structure.part1Name}" — ${structure.part1Points} điểm\n` +
-        `  - Phần II: "${structure.part2Name}" — ${structure.part2Points} điểm\n` +
-        `\nCấu trúc chi tiết:\n` +
-        `  - 2 câu hỏi phần ${structure.part1Name} (tổng ~${structure.part1Points}đ): nhận biết, thông hiểu, vận dụng\n` +
-        `  - 2 câu phần ${structure.part2Name} vừa (~${Math.round(structure.part2Points / 2)}đ): ngắn, suy luận\n` +
-        `  - 1 câu phần ${structure.part2Name} dài (${structure.part2Points - Math.round(structure.part2Points / 2)}đ): nghị luận sâu, viết bài hoàn chỉnh\n` +
-        `\nĐề thi thuộc tác phẩm văn học Việt Nam. Tổng điểm: ${structure.part1Points + structure.part2Points} điểm.`;
+        `Tạo đề thi "${title}" (THCS).\n` +
+        `Cấu trúc bắt buộc — mỗi câu có ĐÚNG số điểm như ghi bên dưới:\n` +
+        `${part1}\n${part2Social}\n${part2Lit}`;
+
     } else if (type === 'exam') {
-      // Exam with default structure
+      // Default exam structure (hardcoded 3+7)
       userPrompt =
-        `Tạo 5 câu hỏi cho đề thi "${title}".\n` +
-        `Cấu trúc: Phần I — Đọc hiểu (3 điểm): 2 câu ngắn; Phần II — Làm văn (7 điểm): 2 câu vừa + 1 câu dài.\n` +
-        `Đề thi thuộc tác phẩm văn học Việt Nam.`;
+        `Tạo đề thi "${title}" (THCS). Cấu trúc bắt buộc:\n` +
+        `Câu 1 (0.5đ) — Nhận biết. Tự tạo văn bản đọc hiểu. KHÔNG dùng tác phẩm thư viện.\n` +
+        `Câu 2 (1.0đ) — Thông hiểu.\n` +
+        `Câu 3 (1.5đ) — Vận dụng.\n` +
+        `Câu 4 (2.0đ) — Nghị luận xã hội. Viết đoạn văn 150-200 chữ.\n` +
+        `Câu 5 (5.0đ) — Nghị luận văn học. Tự chọn tác phẩm Việt Nam phù hợp.`;
+
     } else {
-      // Exercise: flexible format
-      userPrompt =
-        `Tạo 4 câu hỏi bài tập "${title}".\n` +
-        `Yêu cầu: đa dạng loại (tự luận, trắc nghiệm, trả lời ngắn), mỗi câu 1-3 điểm, tổng không quá 10 điểm.\n` +
-        `Câu 1-2: đọc hiểu văn bản. Câu 3-4: vận dụng, nghị luận ngắn.\n` +
-        `Không bắt buộc gắn tác phẩm cụ thể.`;
+      // ── EXERCISE ─────────────────────────────────────────────────────────
+      if (customPrompt) {
+        userPrompt =
+          `Tạo 4 câu hỏi bài tập "${title}" theo yêu cầu giáo viên:\n${customPrompt}`;
+      } else if (passageContext) {
+        userPrompt =
+          `Tạo 4 câu hỏi bài tập "${title}" dựa trên tác phẩm:\n${passageContext}\n` +
+          `2 câu đọc hiểu (1đ) + 1 câu thông hiểu (2đ) + 1 câu vận dụng/nghị luận (2đ). Tổng 6 điểm.`;
+      } else {
+        userPrompt =
+          `Tạo 4 câu hỏi bài tập "${title}".\n` +
+          `Đa dạng loại (tự luận, trả lời ngắn), mỗi câu 1-3 điểm, tổng tối đa 10 điểm.\n` +
+          `Câu 1-2: đọc hiểu. Câu 3-4: vận dụng, nghị luận ngắn. Không bắt buộc gắn tác phẩm.`;
+      }
     }
 
     const { text: aiResponse, inputTokens, outputTokens } = await aiCall(
       env,
       '@cf/mistralai/mistral-small-3.1-24b-instruct',
-      { systemPrompt, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
+      { systemPrompt: SYSTEM_PROMPT, messages: [{ role: 'user', content: userPrompt }], maxTokens: 1536, temperature: 0.6 }
     );
 
     const { parsed } = parseAiJson(aiResponse, null);
@@ -108,7 +138,6 @@ export async function onRequestPost({ request, env, data }) {
       return jsonError('AI không tạo được câu hỏi. Vui lòng thử lại.', 500);
     }
 
-    // Store preview in KV (30 min TTL)
     const previewId = crypto.randomUUID();
     await kvSet(env.VANHIEN_KV, `${KV_KEY_PREFIX}${previewId}`, {
       title: title.trim(),
@@ -118,6 +147,7 @@ export async function onRequestPost({ request, env, data }) {
       duration,
       deadline: deadline || null,
       questions,
+      customPrompt: customPrompt || null,
       teacherId: user.id,
       createdAt: new Date().toISOString(),
     }, 1800);
@@ -125,12 +155,7 @@ export async function onRequestPost({ request, env, data }) {
     await logTokenUsage(env, user.id, 'exam_gen',
       `Tạo đề: ${title.trim()}`, inputTokens, outputTokens);
 
-    return new Response(JSON.stringify({
-      previewId,
-      title: title.trim(),
-      type,
-      questions,
-    }), {
+    return new Response(JSON.stringify({ previewId, title: title.trim(), type, questions }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

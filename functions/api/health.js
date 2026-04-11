@@ -1,21 +1,20 @@
-export default {
-  async fetch(request, env) {
-    const keys = Object.keys(env || {});
-    const jwtDirect = env?.JWT_SECRET;
-    const dbDirect = !!env?.DB;
-    const kvDirect = !!env?.VANHIEN_KV;
-    const url = new URL(request.url);
+import { cachedJson } from './_cache.js';
 
-    return new Response(JSON.stringify({
-      url: url.pathname,
-      envType: typeof env,
-      envKeys: keys,
-      jwtPresent: 'JWT_SECRET' in (env || {}),
-      jwtValue: jwtDirect ? 'SET(' + jwtDirect.length + ' chars)' : 'MISSING',
-      dbPresent: 'DB' in (env || {}),
-      dbWorking: dbDirect,
-      kvPresent: 'VANHIEN_KV' in (env || {}),
-      kvWorking: kvDirect,
-    }), { headers: { 'Content-Type': 'application/json' } });
+// Health check — no auth required
+export async function onRequestGet({ env }) {
+  const ai = env?.['AI'] ?? null;
+  let aiStatus = 'not configured';
+  if (ai) {
+    try {
+      const result = await ai.run('@cf/google/gemma-3-12b-it', {
+        messages: [{ role: 'user', content: 'OK?' }],
+        max_tokens: 5,
+        temperature: 0.1,
+      });
+      aiStatus = result?.response ? 'ok' : 'no-response';
+    } catch (e) {
+      aiStatus = 'error: ' + (e?.message || String(e));
+    }
   }
-};
+  return cachedJson({ status: 'ok', ai: aiStatus }, { profile: 'nocache' });
+}
